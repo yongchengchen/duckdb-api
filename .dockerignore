@@ -1,0 +1,8 @@
+.git
+data/
+examples/
+metabase/
+docker-compose.yml
+README.md
+.env
+.env.example

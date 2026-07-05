@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DuckDB Lakehouse API</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦆</text></svg>">
+<style>
+  :root {
+    --bg: #0f1419; --panel: #171e26; --panel2: #1d2630; --border: #2b3743;
+    --text: #dce3ea; --muted: #8394a5; --accent: #ffd166; --accent-text: #201a05;
+    --green: #4ade80; --red: #f87171; --blue: #60a5fa; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", Segoe UI, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  header .spacer { flex: 1; }
+  header label { color: var(--muted); font-size: 12px; }
+  input, select, textarea, button { font: inherit; color: var(--text); }
+  input, select, textarea { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; outline: none; width: 100%; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  button { cursor: pointer; border: 1px solid var(--border); background: var(--panel2); border-radius: 8px; padding: 8px 14px; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 650; }
+  button.danger { color: var(--red); }
+  button.small { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+  nav { display: flex; gap: 6px; padding: 12px 24px 0; }
+  nav button { border: none; background: none; color: var(--muted); padding: 8px 14px; border-bottom: 2px solid transparent; border-radius: 0; }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+  main { padding: 20px 24px 60px; max-width: 1200px; margin: 0 auto; }
+  .bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .bar h2 { margin: 0; font-size: 16px; }
+  table.grid { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  table.grid th, table.grid td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.grid th { color: var(--muted); font-weight: 600; font-size: 12px; background: var(--panel2); white-space: nowrap; }
+  table.grid tr:last-child td { border-bottom: none; }
+  .path { font-family: var(--mono); font-size: 12px; color: var(--blue); word-break: break-all; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11px; background: var(--panel2); border: 1px solid var(--border); color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-top: 16px; }
+  .card h3 { margin: 0 0 14px; font-size: 15px; }
+  .frow { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .field .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .checkline { display: flex; align-items: center; gap: 8px; }
+  .checkline input { width: auto; }
+  fieldset { border: 1px dashed var(--border); border-radius: 10px; margin: 0 0 12px; padding: 12px; }
+  legend { font-size: 12px; color: var(--muted); padding: 0 6px; }
+  pre.sqlbox { background: #0b0f13; border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-family: var(--mono); font-size: 12px; color: #a8d08d; overflow-x: auto; white-space: pre-wrap; min-height: 60px; }
+  textarea.sql { font-family: var(--mono); font-size: 13px; min-height: 130px; resize: vertical; }
+  .meta { color: var(--muted); font-size: 12px; margin: 10px 0; }
+  .error { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.4); color: var(--red); border-radius: 10px; padding: 10px 14px; margin: 10px 0; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; }
+  .result-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .result-wrap table { border: none; border-radius: 0; }
+  .null { color: var(--muted); font-style: italic; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chips button { font-family: var(--mono); font-size: 12px; padding: 3px 10px; border-radius: 20px; }
+  #modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 20; }
+  #modal .box { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: min(940px, 92vw); max-height: 84vh; display: flex; flex-direction: column; }
+  #modal .box header { border-radius: 14px 14px 0 0; position: static; }
+  #modal .body { padding: 16px; overflow: auto; }
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--border); padding: 10px 20px; border-radius: 10px; z-index: 30; transition: opacity .3s; opacity: 0; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #toast.err { border-color: var(--red); color: var(--red); }
+  .hidden { display: none !important; }
+  kbd { background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; font-size: 11px; font-family: var(--mono); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🦆 DuckDB Lakehouse API</h1>
+  <span class="tag">GoFrame · DuckDB · httpfs</span>
+  <div class="spacer"></div>
+  <label>API Key</label>
+  <input id="apiKey" type="password" placeholder="X-API-Key" style="width:200px">
+</header>
+
+<nav>
+  <button id="tabTables" class="active">数据表</button>
+  <button id="tabSQL">SQL 控制台</button>
+</nav>
+
+<main>
+  <!-- ============ 数据表 ============ -->
+  <section id="viewTables">
+    <div class="bar">
+      <h2>已注册的表(DuckDB 视图)</h2>
+      <button class="primary" id="btnAdd">＋ 添加表</button>
+    </div>
+    <table class="grid">
+      <thead><tr><th>表名</th><th>格式</th><th>数据源路径</th><th>更新时间</th><th style="width:260px">操作</th></tr></thead>
+      <tbody id="tableRows"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody>
+    </table>
+
+    <div class="card hidden" id="formCard">
+      <h3 id="formTitle">添加表</h3>
+      <div class="frow">
+        <div class="field">
+          <label>表名 *</label>
+          <input id="fName" placeholder="orders">
+        </div>
+        <div class="field">
+          <label>数据格式</label>
+          <select id="fFormat">
+            <option value="parquet">Parquet</option>
+            <option value="csv">CSV</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="checkline" style="margin-top:24px"><input type="checkbox" id="fHive" checked> Hive 分区 (year=*/month=*)</label>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label>数据源路径 *</label>
+        <input id="fPath" placeholder="s3://mybucket/orders/year=*/month=*/*.parquet 或 /local/orders/*.parquet">
+        <div class="hint">支持 s3://(需要下方凭证)、https://,以及容器内本地文件:宿主机 ./localdata(可在 .env 改)已挂载为 /local,支持 * 通配符和 Hive 分区目录。
+          也可以直接上传文件到 /local:
+          <input type="file" id="fUpload" accept=".parquet,.csv,.json,.csv.gz,.json.gz,.jsonl,.ndjson" style="display:none">
+          <button type="button" class="small" id="btnUpload">📤 上传文件</button>
+          <span id="uploadMsg"></span>
+        </div>
+      </div>
+      <fieldset id="s3Fields">
+        <legend>S3 / R2 / MinIO 凭证(仅 s3:// 路径需要)</legend>
+        <div class="frow">
+          <div class="field"><label>Region *</label><input id="fRegion" placeholder="ap-southeast-2"></div>
+          <div class="field"><label>Access Key ID *</label><input id="fKeyId" autocomplete="off"></div>
+          <div class="field"><label>Secret Access Key *</label><input id="fSecret" type="password" autocomplete="new-password"></div>
+        </div>
+        <div class="frow">
+          <div class="field">
+            <label>Endpoint(可选,自定义 S3 服务)</label>
+            <input id="fEndpoint" placeholder="minio:9000 或 <account>.r2.cloudflarestorage.com">
+            <div class="hint">不带 http(s):// 前缀;留空则使用 AWS</div>
+          </div>
+          <div class="field">
+            <label>URL Style(可选)</label>
+            <select id="fUrlStyle">
+              <option value="">默认</option>
+              <option value="vhost">vhost</option>
+              <option value="path">path(MinIO 常用)</option>
+            </select>
+          </div>
+        </div>
+      </fieldset>
+      <div class="field" style="margin-bottom:12px">
+        <label>等效 DuckDB SQL</label>
+        <pre class="sqlbox" id="sqlPreview">-- 填写上方字段后自动生成</pre>
+      </div>
+      <div style="display:flex; gap:10px">
+        <button class="primary" id="btnSave">保存并验证</button>
+        <button id="btnCancel">取消</button>
+        <span class="meta" id="formMsg"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SQL 控制台 ============ -->
+  <section id="viewSQL" class="hidden">
+    <div class="bar"><h2>SQL 控制台(只读)</h2><span class="meta">快捷键 <kbd>⌘/Ctrl + Enter</kbd> 运行</span></div>
+    <div class="chips" id="tableChips"></div>
+    <textarea id="sqlInput" class="sql" spellcheck="false">SELECT 1 AS hello, version() AS duckdb_version;</textarea>
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center">
+      <button class="primary" id="btnRun">▶ 运行</button>
+      <span class="meta" id="sqlMeta"></span>
+    </div>
+    <div id="sqlError" class="error hidden"></div>
+    <div id="sqlResult" style="margin-top:12px"></div>
+  </section>
+</main>
+
+<div id="modal" class="hidden">
+  <div class="box">
+    <header><h1 id="modalTitle" style="font-size:15px"></h1><div class="spacer"></div><button class="small" id="modalClose">关闭 ✕</button></header>
+    <div class="body" id="modalBody"></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const apiKeyInput = $('#apiKey');
+apiKeyInput.value = localStorage.getItem('duckdb_api_key') || '';
+apiKeyInput.addEventListener('change', () => localStorage.setItem('duckdb_api_key', apiKeyInput.value));
+
+let editingName = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch('/api' + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKeyInput.value, ...(opts.headers || {}) },
+  });
+  let body;
+  try { body = await res.json(); } catch { body = { code: res.status, message: res.statusText }; }
+  if (!res.ok || body.code !== 0) throw new Error(body.message || ('HTTP ' + res.status));
+  return body.data;
+}
+
+function toast(msg, isErr = false) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', 3200);
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------- tabs ---------- */
+function switchTab(tab) {
+  $('#tabTables').classList.toggle('active', tab === 'tables');
+  $('#tabSQL').classList.toggle('active', tab === 'sql');
+  $('#viewTables').classList.toggle('hidden', tab !== 'tables');
+  $('#viewSQL').classList.toggle('hidden', tab !== 'sql');
+}
+$('#tabTables').onclick = () => switchTab('tables');
+$('#tabSQL').onclick = () => { switchTab('sql'); renderChips(); };
+
+/* ---------- tables list ---------- */
+let tablesCache = [];
+
+async function loadTables() {
+  const tbody = $('#tableRows');
+  try {
+    const data = await api('/tables');
+    tablesCache = data.tables || [];
+    if (!tablesCache.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">还没有表,点击右上角「添加表」注册第一个数据源</td></tr>';
+      return;
+    }
+    tbody.innerHTML = tablesCache.map(t => `
+      <tr>
+        <td><b>${esc(t.name)}</b>${t.hive_partitioning ? ' <span class="tag">hive</span>' : ''}</td>
+        <td><span class="tag">${esc(t.format)}</span></td>
+        <td class="path">${esc(t.path)}</td>
+        <td class="meta">${t.updated_at ? esc(t.updated_at.replace('T',' ').slice(0,19)) : ''}</td>
+        <td>
+          <button class="small" onclick="showSchema('${esc(t.name)}')">结构</button>
+          <button class="small" onclick="showPreview('${esc(t.name)}')">预览</button>
+          <button class="small" onclick="openEdit('${esc(t.name)}')">编辑</button>
+          <button class="small danger" onclick="delTable('${esc(t.name)}')">删除</button>
+        </td>
+      </tr>`).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty">加载失败:${esc(e.message)}(检查右上角 API Key)</td></tr>`;
+  }
+}
+
+/* ---------- add / edit form ---------- */
+function formPayload() {
+  const path = $('#fPath').value.trim();
+  const payload = {
+    name: $('#fName').value.trim(),
+    format: $('#fFormat').value,
+    path,
+    hive_partitioning: $('#fHive').checked,
+  };
+  if (path.toLowerCase().startsWith('s3://')) {
+    payload.s3 = {
+      region: $('#fRegion').value.trim(),
+      access_key_id: $('#fKeyId').value.trim(),
+      secret_access_key: $('#fSecret').value,
+      endpoint: $('#fEndpoint').value.trim(),
+      url_style: $('#fUrlStyle').value,
+    };
+  }
+  return payload;
+}
+
+function openForm(title) {
+  $('#formTitle').textContent = title;
+  $('#formCard').classList.remove('hidden');
+  $('#formMsg').textContent = '';
+  $('#sqlPreview').textContent = '-- 填写上方字段后自动生成';
+  $('#formCard').scrollIntoView({ behavior: 'smooth' });
+}
+
+$('#btnAdd').onclick = () => {
+  editingName = null;
+  ['fName','fPath','fRegion','fKeyId','fSecret','fEndpoint'].forEach(id => $('#' + id).value = '');
+  $('#fFormat').value = 'parquet';
+  $('#fUrlStyle').value = '';
+  $('#fHive').checked = true;
+  $('#fName').disabled = false;
+  $('#fSecret').placeholder = '';
+  openForm('添加表');
+};
+
+async function openEdit(name) {
+  try {
+    const { table: t } = await api('/tables/' + name);
+    editingName = name;
+    $('#fName').value = t.name; $('#fName').disabled = true;
+    $('#fFormat').value = t.format;
+    $('#fPath').value = t.path;
+    $('#fHive').checked = !!t.hive_partitioning;
+    $('#fRegion').value = t.s3?.region || '';
+    $('#fKeyId').value = t.s3?.access_key_id || '';
+    $('#fSecret').value = '';
+    $('#fSecret').placeholder = t.s3 ? '(留空则保持不变)' : '';
+    $('#fEndpoint').value = t.s3?.endpoint || '';
+    $('#fUrlStyle').value = t.s3?.url_style || '';
+    openForm('编辑表:' + name);
+    refreshSQLPreview();
+  } catch (e) { toast(e.message, true); }
+}
+
+$('#btnCancel').onclick = () => $('#formCard').classList.add('hidden');
+
+$('#btnSave').onclick = async () => {
+  const payload = formPayload();
+  $('#formMsg').textContent = '正在通过 DuckDB 验证数据源…';
+  $('#btnSave').disabled = true;
+  try {
+    if (editingName) await api('/tables/' + editingName, { method: 'PUT', body: JSON.stringify(payload) });
+    else await api('/tables', { method: 'POST', body: JSON.stringify(payload) });
+    toast('已保存,数据源验证通过 ✓');
+    $('#formCard').classList.add('hidden');
+    loadTables();
+  } catch (e) {
+    $('#formMsg').textContent = '';
+    toast(e.message, true);
+  } finally { $('#btnSave').disabled = false; }
+};
+
+/* live SQL preview */
+let previewTimer;
+function refreshSQLPreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(async () => {
+    const p = formPayload();
+    if (!p.name || !p.path) { $('#sqlPreview').textContent = '-- 填写表名和路径后自动生成'; return; }
+    if (p.s3) { p.s3.secret_access_key = p.s3.secret_access_key || '********'; p.s3.access_key_id = p.s3.access_key_id || '<ACCESS_KEY_ID>'; p.s3.region = p.s3.region || '<REGION>'; }
+    try {
+      const data = await api('/tables/preview-sql', { method: 'POST', body: JSON.stringify(p) });
+      $('#sqlPreview').textContent = 'INSTALL httpfs;\nLOAD httpfs;\n\n' + data.statements.join(';\n\n') + ';';
+    } catch (e) {
+      $('#sqlPreview').textContent = '-- ' + e.message;
+    }
+  }, 350);
+}
+['fName','fFormat','fPath','fHive','fRegion','fKeyId','fSecret','fEndpoint','fUrlStyle'].forEach(id => {
+  $('#' + id).addEventListener('input', refreshSQLPreview);
+});
+
+/* upload a data file into /local */
+$('#btnUpload').onclick = () => $('#fUpload').click();
+$('#fUpload').addEventListener('change', async () => {
+  const file = $('#fUpload').files[0];
+  if (!file) return;
+  $('#uploadMsg').textContent = `上传中 ${file.name}…`;
+  $('#btnUpload').disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/upload', { method: 'POST', headers: { 'X-API-Key': apiKeyInput.value }, body: fd });
+    const body = await res.json();
+    if (!res.ok || body.code !== 0) throw new Error(body.message || ('HTTP ' + res.status));
+    $('#fPath').value = body.data.path;
+    const ext = (body.data.filename.split('.').pop() || '').toLowerCase();
+    if (ext === 'csv') $('#fFormat').value = 'csv';
+    else if (['json','jsonl','ndjson'].includes(ext)) $('#fFormat').value = 'json';
+    else if (ext === 'parquet') $('#fFormat').value = 'parquet';
+    $('#uploadMsg').textContent = `已上传 ✓ (${(body.data.size/1024).toFixed(1)} KB)`;
+    refreshSQLPreview();
+  } catch (e) {
+    $('#uploadMsg').textContent = '';
+    toast('上传失败:' + e.message, true);
+  } finally {
+    $('#btnUpload').disabled = false;
+    $('#fUpload').value = '';
+  }
+});
+
+async function delTable(name) {
+  if (!confirm(`确定删除表 "${name}"?(只删除注册信息,不会动 S3 上的数据)`)) return;
+  try {
+    await api('/tables/' + name, { method: 'DELETE' });
+    toast('已删除 ' + name);
+    loadTables();
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---------- schema / preview modal ---------- */
+function openModal(title) {
+  $('#modalTitle').textContent = title;
+  $('#modalBody').innerHTML = '<div class="empty">加载中…</div>';
+  $('#modal').classList.remove('hidden');
+}
+$('#modalClose').onclick = () => $('#modal').classList.add('hidden');
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') $('#modal').classList.add('hidden'); });
+
+function renderResult(data) {
+  if (!data.columns?.length) return '<div class="empty">无结果</div>';
+  const head = data.columns.map((c, i) => `<th>${esc(c)}<br><span class="meta">${esc(data.types?.[i] || '')}</span></th>`).join('');
+  const rows = data.rows.map(r => '<tr>' + r.map(v =>
+    `<td>${v === null ? '<span class="null">null</span>' : esc(typeof v === 'object' ? JSON.stringify(v) : v)}</td>`
+  ).join('') + '</tr>').join('');
+  return `<div class="result-wrap"><table class="grid"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+async function showSchema(name) {
+  openModal('表结构:' + name);
+  try { $('#modalBody').innerHTML = renderResult(await api(`/tables/${name}/schema`)); }
+  catch (e) { $('#modalBody').innerHTML = `<div class="error">${esc(e.message)}</div>`; }
+}
+
+async function showPreview(name) {
+  openModal('数据预览:' + name + '(前 50 行)');
+  try {
+    const data = await api(`/tables/${name}/preview?limit=50`);
+    $('#modalBody').innerHTML = `<div class="meta">${data.row_count} 行 · ${data.duration_ms} ms</div>` + renderResult(data);
+  } catch (e) { $('#modalBody').innerHTML = `<div class="error">${esc(e.message)}</div>`; }
+}
+
+/* ---------- SQL console ---------- */
+function renderChips() {
+  $('#tableChips').innerHTML = tablesCache.map(t =>
+    `<button onclick="insertTable('${esc(t.name)}')">${esc(t.name)}</button>`).join('') || '<span class="meta">暂无已注册的表</span>';
+}
+function insertTable(name) {
+  $('#sqlInput').value = `SELECT * FROM "${name}" LIMIT 100;`;
+  $('#sqlInput').focus();
+}
+
+async function runSQL() {
+  const sql = $('#sqlInput').value.trim();
+  if (!sql) return;
+  $('#btnRun').disabled = true;
+  $('#sqlMeta').textContent = '运行中…';
+  $('#sqlError').classList.add('hidden');
+  try {
+    const data = await api('/query', { method: 'POST', body: JSON.stringify({ sql }) });
+    $('#sqlMeta').textContent = `${data.row_count} 行${data.truncated ? '(已截断)' : ''} · ${data.duration_ms} ms`;
+    $('#sqlResult').innerHTML = renderResult(data);
+  } catch (e) {
+    $('#sqlMeta').textContent = '';
+    $('#sqlResult').innerHTML = '';
+    $('#sqlError').textContent = e.message;
+    $('#sqlError').classList.remove('hidden');
+  } finally { $('#btnRun').disabled = false; }
+}
+$('#btnRun').onclick = runSQL;
+$('#sqlInput').addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runSQL(); }
+});
+
+loadTables();
+</script>
+</body>
+</html>
