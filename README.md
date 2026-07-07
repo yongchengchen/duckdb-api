@@ -20,7 +20,7 @@ docker run --rm -v "$PWD":/src -w /src golang:1.24-bullseye \
   bash -lc 'CGO_ENABLED=1 go build -o duckdb-api'
 ```
 
-- **Web UI**:填表单即可把 S3 上的 parquet/csv/json 注册成 DuckDB 表(等效 `INSTALL httpfs` + `CREATE SECRET` + `CREATE VIEW ... read_parquet('s3://...')`),内置 SQL 控制台
+- **Web UI**:填表单即可把 S3 上的 parquet/csv/json/avro 注册成 DuckDB 表(等效 `INSTALL httpfs` + `CREATE SECRET` + `CREATE VIEW ... read_parquet('s3://...')`),内置 SQL 控制台
 - **HTTP API**:给 Laravel(或任何后端)提供参数化 SQL 查询接口,默认只读
 - **Metabase + Superset**:自动导出 `metabase.duckdb` 目录文件 + S3 secrets,两个 BI 工具直接连上用
 - **一条命令启动整个 stack**:`docker compose up -d --build`
@@ -60,7 +60,7 @@ docker compose up -d --build
 | 字段 | 示例 |
 |---|---|
 | 表名 | `orders` |
-| 格式 | Parquet |
+| 格式 | Parquet(也支持 CSV / JSON / Avro,Avro 表的等效 SQL 会自动带 `INSTALL avro; LOAD avro` 并用 `read_avro()`) |
 | 路径 | `s3://mybucket/orders/year=*/month=*/*.parquet` |
 | Hive 分区 | ✅ |
 | Region | `ap-southeast-2` |
@@ -92,7 +92,7 @@ CREATE OR REPLACE VIEW "orders" AS SELECT * FROM
 
 除了 S3/https,也支持查询容器本地的文件,两种放文件的方式:
 
-- **UI 上传**:添加表表单里点「📤 上传文件」,parquet/csv/json 会直接传到容器内 `/local/`,路径自动填好——Docker 跑在远程服务器上时也能用,不需要登录服务器
+- **UI 上传**:添加表表单里点「📤 上传文件」,parquet/csv/json/avro 会直接传到容器内 `/local/`,路径自动填好——Docker 跑在远程服务器上时也能用,不需要登录服务器
 - **volume 挂载**:把文件放进 Docker 宿主机的 `./localdata/`(目录可在 `.env` 里用 `LOCAL_DATA_DIR` 改,compose 会把它挂载为 duckdb-api / metabase / superset **三个容器**内的 `/local`)
 
 然后添加表时路径填 `/local/sales.parquet` 或 `/local/orders/year=*/month=*/*.parquet`(不需要 S3 凭证),等效 SQL 就是 `CREATE VIEW ... AS SELECT * FROM read_parquet('/local/...')`。

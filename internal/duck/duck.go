@@ -324,7 +324,7 @@ func (s *Service) ExportMetabase(ctx context.Context) error {
 	// Plan B for Metabase: an init script creating session secrets, for driver
 	// versions where sharing the persistent secret directory is not possible.
 	var b strings.Builder
-	b.WriteString("INSTALL httpfs;\nLOAD httpfs;\n")
+	b.WriteString("INSTALL httpfs;\nLOAD httpfs;\nINSTALL avro;\nLOAD avro;\n")
 	for _, t := range tables {
 		if secret, ok := SecretSQL(t, false); ok {
 			b.WriteString(secret + ";\n")

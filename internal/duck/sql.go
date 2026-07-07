@@ -18,6 +18,13 @@ var (
 		"parquet": "read_parquet",
 		"csv":     "read_csv_auto",
 		"json":    "read_json_auto",
+		"avro":    "read_avro",
+	}
+
+	// formatExtensions lists DuckDB extensions a format needs beyond httpfs
+	// (which is always installed by the core bootstrap).
+	formatExtensions = map[string]string{
+		"avro": "avro",
 	}
 )
 
@@ -40,7 +47,7 @@ func ValidateTable(t *model.Table) error {
 		t.Format = "parquet"
 	}
 	if _, ok := readerFuncs[t.Format]; !ok {
-		return fmt.Errorf("unsupported format %q: use parquet, csv or json", t.Format)
+		return fmt.Errorf("unsupported format %q: use parquet, csv, json or avro", t.Format)
 	}
 	t.CustomSQL = strings.TrimSpace(strings.ReplaceAll(t.CustomSQL, "\r\n", "\n"))
 	custom := t.CustomSQL != ""
@@ -172,6 +179,9 @@ func TableSQL(t model.Table, persistentSecret bool) []string {
 		return CustomTableSQL(t, persistentSecret)
 	}
 	var out []string
+	if ext, ok := formatExtensions[t.Format]; ok {
+		out = append(out, "INSTALL "+ext, "LOAD "+ext)
+	}
 	if secret, ok := SecretSQL(t, persistentSecret); ok {
 		out = append(out, secret)
 	}
