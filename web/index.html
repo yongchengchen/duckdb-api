@@ -72,58 +72,64 @@
   <h1>🦆 DuckDB Lakehouse API</h1>
   <span class="tag">GoFrame · DuckDB · httpfs</span>
   <div class="spacer"></div>
+  <button class="small" id="btnLang">English</button>
   <label>API Key</label>
   <input id="apiKey" type="password" placeholder="X-API-Key" style="width:200px">
 </header>
 
 <nav>
-  <button id="tabTables" class="active">数据表</button>
-  <button id="tabSQL">SQL 控制台</button>
+  <button id="tabTables" class="active" data-i18n="nav_tables"></button>
+  <button id="tabSQL" data-i18n="nav_sql"></button>
 </nav>
 
 <main>
-  <!-- ============ 数据表 ============ -->
+  <!-- ============ Tables ============ -->
   <section id="viewTables">
     <div class="bar">
-      <h2>已注册的表(DuckDB 视图)</h2>
-      <button class="primary" id="btnAdd">＋ 添加表</button>
+      <h2 data-i18n="tables_title"></h2>
+      <button class="primary" id="btnAdd" data-i18n="btn_add"></button>
     </div>
     <table class="grid">
-      <thead><tr><th>表名</th><th>格式</th><th>数据源路径</th><th>更新时间</th><th style="width:260px">操作</th></tr></thead>
-      <tbody id="tableRows"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody>
+      <thead><tr>
+        <th data-i18n="th_name"></th><th data-i18n="th_format"></th>
+        <th data-i18n="th_path"></th><th data-i18n="th_updated"></th>
+        <th style="width:280px" data-i18n="th_actions"></th>
+      </tr></thead>
+      <tbody id="tableRows"></tbody>
     </table>
 
     <div class="card hidden" id="formCard">
-      <h3 id="formTitle">添加表</h3>
+      <h3 id="formTitle"></h3>
       <div class="frow">
         <div class="field">
-          <label>表名 *</label>
+          <label data-i18n="lbl_name"></label>
           <input id="fName" placeholder="orders">
         </div>
         <div class="field">
-          <label>数据格式</label>
+          <label data-i18n="lbl_format"></label>
           <select id="fFormat">
             <option value="parquet">Parquet</option>
             <option value="csv">CSV</option>
             <option value="json">JSON</option>
+            <option value="avro">Avro</option>
           </select>
         </div>
         <div class="field">
-          <label class="checkline" style="margin-top:24px"><input type="checkbox" id="fHive" checked> Hive 分区 (year=*/month=*)</label>
+          <label class="checkline" style="margin-top:24px"><input type="checkbox" id="fHive" checked> <span data-i18n="lbl_hive"></span></label>
         </div>
       </div>
       <div class="field" style="margin-bottom:12px">
-        <label>数据源路径 *</label>
+        <label data-i18n="lbl_path"></label>
         <input id="fPath" placeholder="s3://mybucket/orders/year=*/month=*/*.parquet 或 /local/orders/*.parquet">
-        <div class="hint">支持 s3://(需要下方凭证)、https://,以及容器内本地文件:宿主机 ./localdata(可在 .env 改)已挂载为 /local,支持 * 通配符和 Hive 分区目录。
-          也可以直接上传文件到 /local:
-          <input type="file" id="fUpload" accept=".parquet,.csv,.json,.csv.gz,.json.gz,.jsonl,.ndjson" style="display:none">
-          <button type="button" class="small" id="btnUpload">📤 上传文件</button>
+        <div class="hint">
+          <span data-i18n="hint_path"></span>
+          <input type="file" id="fUpload" accept=".parquet,.csv,.json,.avro,.csv.gz,.json.gz,.jsonl,.ndjson" style="display:none">
+          <button type="button" class="small" id="btnUpload" data-i18n="btn_upload"></button>
           <span id="uploadMsg"></span>
         </div>
       </div>
       <fieldset id="s3Fields">
-        <legend>S3 / R2 / MinIO 凭证(仅 s3:// 路径需要)</legend>
+        <legend data-i18n="s3_legend"></legend>
         <div class="frow">
           <div class="field"><label>Region *</label><input id="fRegion" placeholder="ap-southeast-2"></div>
           <div class="field"><label>Access Key ID *</label><input id="fKeyId" autocomplete="off"></div>
@@ -131,44 +137,47 @@
         </div>
         <div class="frow">
           <div class="field">
-            <label>Endpoint(可选,自定义 S3 服务)</label>
-            <input id="fEndpoint" placeholder="minio:9000 或 <account>.r2.cloudflarestorage.com">
-            <div class="hint">不带 http(s):// 前缀;留空则使用 AWS</div>
+            <label data-i18n="lbl_endpoint"></label>
+            <input id="fEndpoint" placeholder="minio:9000 / <account>.r2.cloudflarestorage.com">
+            <div class="hint" data-i18n="hint_endpoint"></div>
           </div>
           <div class="field">
-            <label>URL Style(可选)</label>
+            <label data-i18n="lbl_urlstyle"></label>
             <select id="fUrlStyle">
-              <option value="">默认</option>
+              <option value="" data-i18n="opt_default"></option>
               <option value="vhost">vhost</option>
-              <option value="path">path(MinIO 常用)</option>
+              <option value="path" data-i18n="opt_path_minio"></option>
             </select>
           </div>
         </div>
       </fieldset>
       <div class="field" style="margin-bottom:12px">
         <label style="display:flex; align-items:center; gap:10px">
-          等效 DuckDB SQL
-          <span class="tag hidden" id="sqlDirtyTag">已手动编辑,保存时将按此 SQL 执行</span>
-          <button type="button" class="small hidden" id="btnRegenSQL">↺ 重新生成</button>
+          <span data-i18n="lbl_sql"></span>
+          <span class="tag hidden" id="sqlDirtyTag" data-i18n="tag_sql_dirty"></span>
+          <button type="button" class="small hidden" id="btnRegenSQL" data-i18n="btn_regen"></button>
         </label>
-        <textarea id="sqlPreview" class="sqlbox" spellcheck="false" rows="8">-- 填写上方字段后自动生成</textarea>
-        <div class="hint">可直接编辑此 SQL,「保存并验证」会按编辑后的语句执行并校验(密钥可保留 <code>'********'</code> 占位,执行时自动替换为已保存的密钥)</div>
+        <textarea id="sqlPreview" class="sqlbox" spellcheck="false" rows="8"></textarea>
+        <div class="hint" data-i18n="hint_sql"></div>
       </div>
       <div style="display:flex; gap:10px">
-        <button class="primary" id="btnSave">保存并验证</button>
-        <button id="btnCancel">取消</button>
+        <button class="primary" id="btnSave" data-i18n="btn_save"></button>
+        <button id="btnCancel" data-i18n="btn_cancel"></button>
         <span class="meta" id="formMsg"></span>
       </div>
     </div>
   </section>
 
-  <!-- ============ SQL 控制台 ============ -->
+  <!-- ============ SQL Console ============ -->
   <section id="viewSQL" class="hidden">
-    <div class="bar"><h2>SQL 控制台(只读)</h2><span class="meta">快捷键 <kbd>⌘/Ctrl + Enter</kbd> 运行</span></div>
+    <div class="bar">
+      <h2 data-i18n="sql_title"></h2>
+      <span class="meta"><span data-i18n="sql_shortcut_pre"></span> <kbd>⌘/Ctrl + Enter</kbd> <span data-i18n="sql_shortcut_post"></span></span>
+    </div>
     <div class="chips" id="tableChips"></div>
     <textarea id="sqlInput" class="sql" spellcheck="false">SELECT 1 AS hello, version() AS duckdb_version;</textarea>
     <div style="margin-top:10px; display:flex; gap:10px; align-items:center">
-      <button class="primary" id="btnRun">▶ 运行</button>
+      <button class="primary" id="btnRun" data-i18n="btn_run"></button>
       <span class="meta" id="sqlMeta"></span>
     </div>
     <div id="sqlError" class="error hidden"></div>
@@ -178,7 +187,7 @@
 
 <div id="modal" class="hidden">
   <div class="box">
-    <header><h1 id="modalTitle" style="font-size:15px"></h1><div class="spacer"></div><button class="small" id="modalClose">关闭 ✕</button></header>
+    <header><h1 id="modalTitle" style="font-size:15px"></h1><div class="spacer"></div><button class="small" id="modalClose" data-i18n="modal_close"></button></header>
     <div class="body" id="modalBody"></div>
   </div>
 </div>
@@ -186,6 +195,137 @@
 
 <script>
 const $ = s => document.querySelector(s);
+
+/* ============================ i18n ============================ */
+const I18N = {
+  zh: {
+    lang_switch: 'English',
+    nav_tables: '数据表',
+    nav_sql: 'SQL 控制台',
+    tables_title: '已注册的表(DuckDB 视图)',
+    btn_add: '＋ 添加表',
+    th_name: '表名', th_format: '格式', th_path: '数据源路径', th_updated: '更新时间', th_actions: '操作',
+    loading: '加载中…',
+    empty_tables: '还没有表,点击右上角「添加表」注册第一个数据源',
+    load_failed: '加载失败:{0}(检查右上角 API Key)',
+    btn_schema: '结构', btn_preview: '预览', btn_edit: '编辑', btn_delete: '删除',
+    form_add_title: '添加表',
+    form_edit_title: '编辑表:{0}',
+    lbl_name: '表名 *', lbl_format: '数据格式', lbl_hive: 'Hive 分区 (year=*/month=*)',
+    lbl_path: '数据源路径 *',
+    hint_path: '支持 s3://(需要下方凭证)、https://,以及容器内本地文件:宿主机 ./localdata(可在 .env 改)已挂载为 /local,支持 * 通配符和 Hive 分区目录。也可以直接上传文件到 /local:',
+    btn_upload: '📤 上传文件',
+    s3_legend: 'S3 / R2 / MinIO 凭证(仅 s3:// 路径需要)',
+    lbl_endpoint: 'Endpoint(可选,自定义 S3 服务)',
+    hint_endpoint: '不带 http(s):// 前缀;留空则使用 AWS',
+    lbl_urlstyle: 'URL Style(可选)',
+    opt_default: '默认', opt_path_minio: 'path(MinIO 常用)',
+    lbl_sql: '等效 DuckDB SQL',
+    tag_sql_dirty: '已手动编辑,保存时将按此 SQL 执行',
+    btn_regen: '↺ 重新生成',
+    hint_sql: "可直接编辑此 SQL,「保存并验证」会按编辑后的语句执行并校验(密钥可保留 '********' 占位,执行时自动替换为已保存的密钥)",
+    btn_save: '保存并验证', btn_cancel: '取消',
+    msg_validating: '正在通过 DuckDB 验证数据源…',
+    toast_saved: '已保存,数据源验证通过 ✓',
+    sql_ph_init: '-- 填写上方字段后自动生成',
+    sql_ph_need: '-- 填写表名和路径后自动生成',
+    secret_unchanged: '(留空则保持不变)',
+    uploading: '上传中 {0}…',
+    uploaded: '已上传 ✓ ({0} KB)',
+    upload_failed: '上传失败:{0}',
+    confirm_delete: '确定删除表 "{0}"?(只删除注册信息,不会动数据本身)',
+    toast_deleted: '已删除 {0}',
+    modal_schema: '表结构:{0}',
+    modal_preview: '数据预览:{0}(前 50 行)',
+    modal_close: '关闭 ✕',
+    no_result: '无结果',
+    rows_ms: '{0} 行 · {1} ms',
+    sql_title: 'SQL 控制台(只读)',
+    sql_shortcut_pre: '快捷键', sql_shortcut_post: '运行',
+    no_tables_chip: '暂无已注册的表',
+    btn_run: '▶ 运行',
+    running: '运行中…',
+    result_meta: '{0} 行{1} · {2} ms',
+    truncated: '(已截断)',
+  },
+  en: {
+    lang_switch: '中文',
+    nav_tables: 'Tables',
+    nav_sql: 'SQL Console',
+    tables_title: 'Registered tables (DuckDB views)',
+    btn_add: '＋ Add table',
+    th_name: 'Name', th_format: 'Format', th_path: 'Source path', th_updated: 'Updated', th_actions: 'Actions',
+    loading: 'Loading…',
+    empty_tables: 'No tables yet — click "Add table" to register your first data source',
+    load_failed: 'Failed to load: {0} (check the API Key at the top right)',
+    btn_schema: 'Schema', btn_preview: 'Preview', btn_edit: 'Edit', btn_delete: 'Delete',
+    form_add_title: 'Add table',
+    form_edit_title: 'Edit table: {0}',
+    lbl_name: 'Table name *', lbl_format: 'Format', lbl_hive: 'Hive partitioning (year=*/month=*)',
+    lbl_path: 'Source path *',
+    hint_path: 'Supports s3:// (credentials below), https://, and local files inside the container: ./localdata on the Docker host (configurable via .env) is mounted as /local; * globs and Hive-partitioned directories work. You can also upload a file straight to /local:',
+    btn_upload: '📤 Upload file',
+    s3_legend: 'S3 / R2 / MinIO credentials (only for s3:// paths)',
+    lbl_endpoint: 'Endpoint (optional, custom S3 service)',
+    hint_endpoint: 'Host[:port] without http(s):// prefix; leave empty for AWS',
+    lbl_urlstyle: 'URL Style (optional)',
+    opt_default: 'Default', opt_path_minio: 'path (common for MinIO)',
+    lbl_sql: 'Equivalent DuckDB SQL',
+    tag_sql_dirty: 'Manually edited — this SQL runs on save',
+    btn_regen: '↺ Regenerate',
+    hint_sql: "You can edit this SQL directly — Save & Validate executes your edited statements and verifies the result (keep the '********' placeholders for secrets; they are replaced with the stored credentials at execution time)",
+    btn_save: 'Save & Validate', btn_cancel: 'Cancel',
+    msg_validating: 'Validating the data source via DuckDB…',
+    toast_saved: 'Saved — data source validated ✓',
+    sql_ph_init: '-- Generated automatically once the fields above are filled',
+    sql_ph_need: '-- Fill in table name and path to generate',
+    secret_unchanged: '(leave empty to keep unchanged)',
+    uploading: 'Uploading {0}…',
+    uploaded: 'Uploaded ✓ ({0} KB)',
+    upload_failed: 'Upload failed: {0}',
+    confirm_delete: 'Delete table "{0}"? (Only removes the registration; the data itself is untouched)',
+    toast_deleted: 'Deleted {0}',
+    modal_schema: 'Schema: {0}',
+    modal_preview: 'Preview: {0} (first 50 rows)',
+    modal_close: 'Close ✕',
+    no_result: 'No results',
+    rows_ms: '{0} rows · {1} ms',
+    sql_title: 'SQL Console (read-only)',
+    sql_shortcut_pre: 'Press', sql_shortcut_post: 'to run',
+    no_tables_chip: 'No registered tables yet',
+    btn_run: '▶ Run',
+    running: 'Running…',
+    result_meta: '{0} rows{1} · {2} ms',
+    truncated: ' (truncated)',
+  },
+};
+
+let lang = localStorage.getItem('duckdb_lang') || ((navigator.language || 'zh').toLowerCase().startsWith('zh') ? 'zh' : 'en');
+if (!I18N[lang]) lang = 'zh';
+
+function t(key, ...args) {
+  let s = (I18N[lang] && I18N[lang][key]) ?? I18N.zh[key] ?? key;
+  return s.replace(/\{(\d)\}/g, (_, i) => args[i] ?? '');
+}
+
+function applyI18n() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  $('#btnLang').textContent = t('lang_switch');
+}
+
+$('#btnLang').onclick = () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  localStorage.setItem('duckdb_lang', lang);
+  applyI18n();
+  loadTables();          // re-render dynamic rows/buttons
+  renderChips();
+  if (!sqlDirty && ($('#sqlPreview').value.startsWith('--') || !$('#sqlPreview').value)) {
+    $('#sqlPreview').value = t('sql_ph_init');
+  }
+};
+
+/* ============================ app ============================ */
 const apiKeyInput = $('#apiKey');
 apiKeyInput.value = localStorage.getItem('duckdb_api_key') || '';
 apiKeyInput.addEventListener('change', () => localStorage.setItem('duckdb_api_key', apiKeyInput.value));
@@ -230,28 +370,29 @@ let tablesCache = [];
 
 async function loadTables() {
   const tbody = $('#tableRows');
+  tbody.innerHTML = `<tr><td colspan="5" class="empty">${t('loading')}</td></tr>`;
   try {
     const data = await api('/tables');
     tablesCache = data.tables || [];
     if (!tablesCache.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">还没有表,点击右上角「添加表」注册第一个数据源</td></tr>';
+      tbody.innerHTML = `<tr><td colspan="5" class="empty">${esc(t('empty_tables'))}</td></tr>`;
       return;
     }
-    tbody.innerHTML = tablesCache.map(t => `
+    tbody.innerHTML = tablesCache.map(tb => `
       <tr>
-        <td><b>${esc(t.name)}</b>${t.hive_partitioning ? ' <span class="tag">hive</span>' : ''}</td>
-        <td><span class="tag">${esc(t.format)}</span></td>
-        <td class="path">${esc(t.path)}</td>
-        <td class="meta">${t.updated_at ? esc(t.updated_at.replace('T',' ').slice(0,19)) : ''}</td>
+        <td><b>${esc(tb.name)}</b>${tb.hive_partitioning ? ' <span class="tag">hive</span>' : ''}${tb.custom_sql ? ' <span class="tag">SQL</span>' : ''}</td>
+        <td><span class="tag">${esc(tb.format)}</span></td>
+        <td class="path">${esc(tb.path || '')}</td>
+        <td class="meta">${tb.updated_at ? esc(tb.updated_at.replace('T',' ').slice(0,19)) : ''}</td>
         <td>
-          <button class="small" onclick="showSchema('${esc(t.name)}')">结构</button>
-          <button class="small" onclick="showPreview('${esc(t.name)}')">预览</button>
-          <button class="small" onclick="openEdit('${esc(t.name)}')">编辑</button>
-          <button class="small danger" onclick="delTable('${esc(t.name)}')">删除</button>
+          <button class="small" onclick="showSchema('${esc(tb.name)}')">${esc(t('btn_schema'))}</button>
+          <button class="small" onclick="showPreview('${esc(tb.name)}')">${esc(t('btn_preview'))}</button>
+          <button class="small" onclick="openEdit('${esc(tb.name)}')">${esc(t('btn_edit'))}</button>
+          <button class="small danger" onclick="delTable('${esc(tb.name)}')">${esc(t('btn_delete'))}</button>
         </td>
       </tr>`).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="5" class="empty">加载失败:${esc(e.message)}(检查右上角 API Key)</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="empty">${esc(t('load_failed', e.message))}</td></tr>`;
   }
 }
 
@@ -271,7 +412,6 @@ function formPayload() {
     format: $('#fFormat').value,
     path,
     hive_partitioning: $('#fHive').checked,
-    // 手动编辑过 → 按编辑后的 SQL 执行;否则明确置空(结构化模式)
     custom_sql: sqlDirty ? $('#sqlPreview').value : '',
   };
   if (path.toLowerCase().startsWith('s3://')) {
@@ -291,7 +431,7 @@ function openForm(title) {
   $('#formCard').classList.remove('hidden');
   $('#formMsg').textContent = '';
   setSqlDirty(false);
-  $('#sqlPreview').value = '-- 填写上方字段后自动生成';
+  $('#sqlPreview').value = t('sql_ph_init');
   $('#formCard').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -303,26 +443,26 @@ $('#btnAdd').onclick = () => {
   $('#fHive').checked = true;
   $('#fName').disabled = false;
   $('#fSecret').placeholder = '';
-  openForm('添加表');
+  openForm(t('form_add_title'));
 };
 
 async function openEdit(name) {
   try {
-    const { table: t } = await api('/tables/' + name);
+    const { table: tb } = await api('/tables/' + name);
     editingName = name;
-    $('#fName').value = t.name; $('#fName').disabled = true;
-    $('#fFormat').value = t.format;
-    $('#fPath').value = t.path;
-    $('#fHive').checked = !!t.hive_partitioning;
-    $('#fRegion').value = t.s3?.region || '';
-    $('#fKeyId').value = t.s3?.access_key_id || '';
+    $('#fName').value = tb.name; $('#fName').disabled = true;
+    $('#fFormat').value = tb.format;
+    $('#fPath').value = tb.path || '';
+    $('#fHive').checked = !!tb.hive_partitioning;
+    $('#fRegion').value = tb.s3?.region || '';
+    $('#fKeyId').value = tb.s3?.access_key_id || '';
     $('#fSecret').value = '';
-    $('#fSecret').placeholder = t.s3 ? '(留空则保持不变)' : '';
-    $('#fEndpoint').value = t.s3?.endpoint || '';
-    $('#fUrlStyle').value = t.s3?.url_style || '';
-    openForm('编辑表:' + name);
-    if (t.custom_sql) {
-      $('#sqlPreview').value = t.custom_sql;
+    $('#fSecret').placeholder = tb.s3 ? t('secret_unchanged') : '';
+    $('#fEndpoint').value = tb.s3?.endpoint || '';
+    $('#fUrlStyle').value = tb.s3?.url_style || '';
+    openForm(t('form_edit_title', name));
+    if (tb.custom_sql) {
+      $('#sqlPreview').value = tb.custom_sql;
       setSqlDirty(true);
     } else {
       refreshSQLPreview();
@@ -334,12 +474,12 @@ $('#btnCancel').onclick = () => $('#formCard').classList.add('hidden');
 
 $('#btnSave').onclick = async () => {
   const payload = formPayload();
-  $('#formMsg').textContent = '正在通过 DuckDB 验证数据源…';
+  $('#formMsg').textContent = t('msg_validating');
   $('#btnSave').disabled = true;
   try {
     if (editingName) await api('/tables/' + editingName, { method: 'PUT', body: JSON.stringify(payload) });
     else await api('/tables', { method: 'POST', body: JSON.stringify(payload) });
-    toast('已保存,数据源验证通过 ✓');
+    toast(t('toast_saved'));
     $('#formCard').classList.add('hidden');
     loadTables();
   } catch (e) {
@@ -351,13 +491,13 @@ $('#btnSave').onclick = async () => {
 /* live SQL preview */
 let previewTimer;
 function refreshSQLPreview() {
-  if (sqlDirty) return; // 手动编辑后不再自动覆盖
+  if (sqlDirty) return; // stop auto-overwriting after manual edits
   clearTimeout(previewTimer);
   previewTimer = setTimeout(async () => {
     if (sqlDirty) return;
     const p = formPayload();
     p.custom_sql = '';
-    if (!p.name || !p.path) { $('#sqlPreview').value = '-- 填写表名和路径后自动生成'; return; }
+    if (!p.name || !p.path) { $('#sqlPreview').value = t('sql_ph_need'); return; }
     if (p.s3) { p.s3.secret_access_key = p.s3.secret_access_key || '********'; p.s3.access_key_id = p.s3.access_key_id || '<ACCESS_KEY_ID>'; p.s3.region = p.s3.region || '<REGION>'; }
     try {
       const data = await api('/tables/preview-sql', { method: 'POST', body: JSON.stringify(p) });
@@ -379,7 +519,7 @@ $('#btnUpload').onclick = () => $('#fUpload').click();
 $('#fUpload').addEventListener('change', async () => {
   const file = $('#fUpload').files[0];
   if (!file) return;
-  $('#uploadMsg').textContent = `上传中 ${file.name}…`;
+  $('#uploadMsg').textContent = t('uploading', file.name);
   $('#btnUpload').disabled = true;
   try {
     const fd = new FormData();
@@ -392,11 +532,12 @@ $('#fUpload').addEventListener('change', async () => {
     if (ext === 'csv') $('#fFormat').value = 'csv';
     else if (['json','jsonl','ndjson'].includes(ext)) $('#fFormat').value = 'json';
     else if (ext === 'parquet') $('#fFormat').value = 'parquet';
-    $('#uploadMsg').textContent = `已上传 ✓ (${(body.data.size/1024).toFixed(1)} KB)`;
+    else if (ext === 'avro') $('#fFormat').value = 'avro';
+    $('#uploadMsg').textContent = t('uploaded', (body.data.size/1024).toFixed(1));
     refreshSQLPreview();
   } catch (e) {
     $('#uploadMsg').textContent = '';
-    toast('上传失败:' + e.message, true);
+    toast(t('upload_failed', e.message), true);
   } finally {
     $('#btnUpload').disabled = false;
     $('#fUpload').value = '';
@@ -404,10 +545,10 @@ $('#fUpload').addEventListener('change', async () => {
 });
 
 async function delTable(name) {
-  if (!confirm(`确定删除表 "${name}"?(只删除注册信息,不会动 S3 上的数据)`)) return;
+  if (!confirm(t('confirm_delete', name))) return;
   try {
     await api('/tables/' + name, { method: 'DELETE' });
-    toast('已删除 ' + name);
+    toast(t('toast_deleted', name));
     loadTables();
   } catch (e) { toast(e.message, true); }
 }
@@ -415,14 +556,14 @@ async function delTable(name) {
 /* ---------- schema / preview modal ---------- */
 function openModal(title) {
   $('#modalTitle').textContent = title;
-  $('#modalBody').innerHTML = '<div class="empty">加载中…</div>';
+  $('#modalBody').innerHTML = `<div class="empty">${t('loading')}</div>`;
   $('#modal').classList.remove('hidden');
 }
 $('#modalClose').onclick = () => $('#modal').classList.add('hidden');
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') $('#modal').classList.add('hidden'); });
 
 function renderResult(data) {
-  if (!data.columns?.length) return '<div class="empty">无结果</div>';
+  if (!data.columns?.length) return `<div class="empty">${esc(t('no_result'))}</div>`;
   const head = data.columns.map((c, i) => `<th>${esc(c)}<br><span class="meta">${esc(data.types?.[i] || '')}</span></th>`).join('');
   const rows = data.rows.map(r => '<tr>' + r.map(v =>
     `<td>${v === null ? '<span class="null">null</span>' : esc(typeof v === 'object' ? JSON.stringify(v) : v)}</td>`
@@ -431,23 +572,23 @@ function renderResult(data) {
 }
 
 async function showSchema(name) {
-  openModal('表结构:' + name);
+  openModal(t('modal_schema', name));
   try { $('#modalBody').innerHTML = renderResult(await api(`/tables/${name}/schema`)); }
   catch (e) { $('#modalBody').innerHTML = `<div class="error">${esc(e.message)}</div>`; }
 }
 
 async function showPreview(name) {
-  openModal('数据预览:' + name + '(前 50 行)');
+  openModal(t('modal_preview', name));
   try {
     const data = await api(`/tables/${name}/preview?limit=50`);
-    $('#modalBody').innerHTML = `<div class="meta">${data.row_count} 行 · ${data.duration_ms} ms</div>` + renderResult(data);
+    $('#modalBody').innerHTML = `<div class="meta">${esc(t('rows_ms', data.row_count, data.duration_ms))}</div>` + renderResult(data);
   } catch (e) { $('#modalBody').innerHTML = `<div class="error">${esc(e.message)}</div>`; }
 }
 
 /* ---------- SQL console ---------- */
 function renderChips() {
-  $('#tableChips').innerHTML = tablesCache.map(t =>
-    `<button onclick="insertTable('${esc(t.name)}')">${esc(t.name)}</button>`).join('') || '<span class="meta">暂无已注册的表</span>';
+  $('#tableChips').innerHTML = tablesCache.map(tb =>
+    `<button onclick="insertTable('${esc(tb.name)}')">${esc(tb.name)}</button>`).join('') || `<span class="meta">${esc(t('no_tables_chip'))}</span>`;
 }
 function insertTable(name) {
   $('#sqlInput').value = `SELECT * FROM "${name}" LIMIT 100;`;
@@ -458,11 +599,11 @@ async function runSQL() {
   const sql = $('#sqlInput').value.trim();
   if (!sql) return;
   $('#btnRun').disabled = true;
-  $('#sqlMeta').textContent = '运行中…';
+  $('#sqlMeta').textContent = t('running');
   $('#sqlError').classList.add('hidden');
   try {
     const data = await api('/query', { method: 'POST', body: JSON.stringify({ sql }) });
-    $('#sqlMeta').textContent = `${data.row_count} 行${data.truncated ? '(已截断)' : ''} · ${data.duration_ms} ms`;
+    $('#sqlMeta').textContent = t('result_meta', data.row_count, data.truncated ? t('truncated') : '', data.duration_ms);
     $('#sqlResult').innerHTML = renderResult(data);
   } catch (e) {
     $('#sqlMeta').textContent = '';
@@ -476,6 +617,7 @@ $('#sqlInput').addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runSQL(); }
 });
 
+applyI18n();
 loadTables();
 </script>
 </body>
