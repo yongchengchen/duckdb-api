@@ -57,8 +57,71 @@ services:
       duckdb-api:
         condition: service_healthy
 
+  superset:
+    build: ./superset
+    image: superset-duckdb:latest
+    restart: unless-stopped
+    ports:
+      - "${SUPERSET_PORT:-8088}:8088"
+    environment: &superset-env
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-please-change-this-in-env-file}
+      # DuckDB resolves ~/.duckdb/stored_secrets from $HOME.
+      HOME: /app/superset_home
+    volumes: &superset-volumes
+      # metabase.duckdb (exported views) — shared with the api service.
+      - duckdb_data:/data
+      # Superset's own metadata db (SQLite), dashboards, users.
+      - superset_home:/app/superset_home
+      # Cache for DuckDB extensions downloaded by duckdb-engine.
+      - superset_duckdb_home:/app/superset_home/.duckdb
+      # Persistent S3 secrets exported by the API (auto-discovered by DuckDB).
+      - duckdb_secrets:/app/superset_home/.duckdb/stored_secrets
+      # Same local files, same container path as duckdb-api and metabase.
+      - ${LOCAL_DATA_DIR:-./localdata}:/local:ro
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8088/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+  # One-shot bootstrap: migrate Superset's metadata db, create the admin user
+  # and register the DuckDB connection. Safe to re-run (idempotent).
+  superset-init:
+    build: ./superset
+    image: superset-duckdb:latest
+    restart: "no"
+    environment:
+      <<: *superset-env
+      SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME:-admin}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin123}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@localhost.local}
+    volumes: *superset-volumes
+    depends_on:
+      duckdb-api:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        superset db upgrade
+        superset fab create-admin \
+          --username "$$SUPERSET_ADMIN_USERNAME" \
+          --firstname Admin --lastname User \
+          --email "$$SUPERSET_ADMIN_EMAIL" \
+          --password "$$SUPERSET_ADMIN_PASSWORD" || true
+        superset init
+        superset set_database_uri -d "DuckDB Lakehouse" -u "duckdb:////data/metabase.duckdb?access_mode=READ_ONLY" \
+          || superset set-database-uri -d "DuckDB Lakehouse" -u "duckdb:////data/metabase.duckdb?access_mode=READ_ONLY" \
+          || true
+
 volumes:
   duckdb_data:
   duckdb_secrets:
   metabase_data:
   metabase_duckdb_home:
+  superset_home:
+  superset_duckdb_home:

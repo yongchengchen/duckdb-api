@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // MaskedSecret is the placeholder returned by the API instead of real credentials.
 const MaskedSecret = "********"
@@ -26,13 +29,20 @@ type Table struct {
 	HivePartitioning bool              `json:"hive_partitioning"`
 	S3               *S3Config         `json:"s3,omitempty"`
 	Options          map[string]string `json:"options,omitempty"` // extra reader options, passed as key = value
-	CreatedAt        time.Time         `json:"created_at"`
-	UpdatedAt        time.Time         `json:"updated_at"`
+	// CustomSQL, when set, replaces the generated statements for this table:
+	// the user edited the "equivalent SQL" by hand. `SECRET '********'` /
+	// `SESSION_TOKEN '********'` placeholders are substituted with the stored
+	// S3 credentials at execution time, so plaintext secrets never need to
+	// appear in the SQL text.
+	CustomSQL string    `json:"custom_sql,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Masked returns a copy safe to return from the API (credentials hidden).
 func (t Table) Masked() Table {
 	if t.S3 != nil {
+		real := *t.S3
 		s3 := *t.S3
 		if s3.SecretAccessKey != "" {
 			s3.SecretAccessKey = MaskedSecret
@@ -41,6 +51,16 @@ func (t Table) Masked() Table {
 			s3.SessionToken = MaskedSecret
 		}
 		t.S3 = &s3
+		// Best-effort masking of credentials the user may have inlined
+		// verbatim in hand-written SQL.
+		if t.CustomSQL != "" {
+			if real.SecretAccessKey != "" {
+				t.CustomSQL = strings.ReplaceAll(t.CustomSQL, real.SecretAccessKey, MaskedSecret)
+			}
+			if real.SessionToken != "" {
+				t.CustomSQL = strings.ReplaceAll(t.CustomSQL, real.SessionToken, MaskedSecret)
+			}
+		}
 	}
 	return t
 }

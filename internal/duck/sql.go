@@ -42,18 +42,27 @@ func ValidateTable(t *model.Table) error {
 	if _, ok := readerFuncs[t.Format]; !ok {
 		return fmt.Errorf("unsupported format %q: use parquet, csv or json", t.Format)
 	}
+	t.CustomSQL = strings.TrimSpace(strings.ReplaceAll(t.CustomSQL, "\r\n", "\n"))
+	custom := t.CustomSQL != ""
+	if custom && len(SplitStatements(t.CustomSQL)) == 0 {
+		return errors.New("custom_sql contains no executable statements")
+	}
 	t.Path = strings.TrimSpace(t.Path)
-	if t.Path == "" {
+	if t.Path == "" && !custom {
 		return errors.New("path is required")
 	}
 	lower := strings.ToLower(t.Path)
 	isS3 := strings.HasPrefix(lower, "s3://")
-	isHTTP := strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
-	isLocal := strings.HasPrefix(t.Path, "/") || strings.HasPrefix(t.Path, "./")
-	if !isS3 && !isHTTP && !isLocal {
-		return fmt.Errorf("unsupported path %q: use s3://, http(s)://, or a local path inside the container (e.g. /local/orders/*.parquet)", t.Path)
+	if t.Path != "" {
+		isHTTP := strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+		isLocal := strings.HasPrefix(t.Path, "/") || strings.HasPrefix(t.Path, "./")
+		if !isS3 && !isHTTP && !isLocal {
+			return fmt.Errorf("unsupported path %q: use s3://, http(s)://, or a local path inside the container (e.g. /local/orders/*.parquet)", t.Path)
+		}
 	}
-	if isS3 {
+	// In custom-SQL mode credentials may be inlined in the statements, so the
+	// structured s3 fields are optional.
+	if isS3 && !custom {
 		if t.S3 == nil || t.S3.AccessKeyID == "" || t.S3.SecretAccessKey == "" || t.S3.Region == "" {
 			return errors.New("s3:// paths require s3.region, s3.access_key_id and s3.secret_access_key")
 		}
@@ -159,11 +168,117 @@ func ViewSQL(t model.Table) string {
 
 // TableSQL returns all statements needed to (re)register one table.
 func TableSQL(t model.Table, persistentSecret bool) []string {
+	if strings.TrimSpace(t.CustomSQL) != "" {
+		return CustomTableSQL(t, persistentSecret)
+	}
 	var out []string
 	if secret, ok := SecretSQL(t, persistentSecret); ok {
 		out = append(out, secret)
 	}
 	return append(out, ViewSQL(t))
+}
+
+var (
+	maskedSecretValRe = regexp.MustCompile(`(?i)(\bSECRET\s+)'\*{3,}'`)
+	maskedTokenValRe  = regexp.MustCompile(`(?i)(\bSESSION_TOKEN\s+)'\*{3,}'`)
+	createSecretRe    = regexp.MustCompile(`(?i)\bCREATE\s+(OR\s+REPLACE\s+)?SECRET\b`)
+)
+
+// CustomTableSQL prepares user-edited statements for execution: masked
+// credential placeholders are substituted with the stored S3 credentials, and
+// CREATE SECRET is upgraded to CREATE PERSISTENT SECRET for catalog exports.
+func CustomTableSQL(t model.Table, persistentSecret bool) []string {
+	stmts := SplitStatements(t.CustomSQL)
+	out := make([]string, 0, len(stmts))
+	for _, stmt := range stmts {
+		if t.S3 != nil {
+			if t.S3.SecretAccessKey != "" {
+				stmt = maskedSecretValRe.ReplaceAllStringFunc(stmt, func(m string) string {
+					return m[:strings.IndexByte(m, '\'')] + QuoteString(t.S3.SecretAccessKey)
+				})
+			}
+			if t.S3.SessionToken != "" {
+				stmt = maskedTokenValRe.ReplaceAllStringFunc(stmt, func(m string) string {
+					return m[:strings.IndexByte(m, '\'')] + QuoteString(t.S3.SessionToken)
+				})
+			}
+		}
+		if persistentSecret {
+			stmt = createSecretRe.ReplaceAllStringFunc(stmt, func(m string) string {
+				if strings.Contains(strings.ToUpper(m), "REPLACE") {
+					return "CREATE OR REPLACE PERSISTENT SECRET"
+				}
+				return "CREATE PERSISTENT SECRET"
+			})
+		}
+		out = append(out, stmt)
+	}
+	return out
+}
+
+// SplitStatements splits SQL text on semicolons, respecting single-quoted
+// strings, double-quoted identifiers and comments. Statements that contain
+// only comments/whitespace are dropped.
+func SplitStatements(sqlText string) []string {
+	var out []string
+	var b strings.Builder
+	flush := func() {
+		if stmt := strings.TrimSpace(b.String()); stmt != "" && stripLeadingComments(stmt) != "" {
+			out = append(out, stmt)
+		}
+		b.Reset()
+	}
+	var inStr, inIdent, lineComment, blockComment bool
+	for i := 0; i < len(sqlText); i++ {
+		ch := sqlText[i]
+		switch {
+		case lineComment:
+			b.WriteByte(ch)
+			if ch == '\n' {
+				lineComment = false
+			}
+		case blockComment:
+			b.WriteByte(ch)
+			if ch == '*' && i+1 < len(sqlText) && sqlText[i+1] == '/' {
+				b.WriteByte('/')
+				i++
+				blockComment = false
+			}
+		case inStr:
+			b.WriteByte(ch)
+			if ch == '\'' {
+				if i+1 < len(sqlText) && sqlText[i+1] == '\'' {
+					b.WriteByte('\'')
+					i++
+				} else {
+					inStr = false
+				}
+			}
+		case inIdent:
+			b.WriteByte(ch)
+			if ch == '"' {
+				inIdent = false
+			}
+		case ch == '\'':
+			inStr = true
+			b.WriteByte(ch)
+		case ch == '"':
+			inIdent = true
+			b.WriteByte(ch)
+		case ch == '-' && i+1 < len(sqlText) && sqlText[i+1] == '-':
+			lineComment = true
+			b.WriteByte(ch)
+		case ch == '/' && i+1 < len(sqlText) && sqlText[i+1] == '*':
+			blockComment = true
+			b.WriteByte(ch)
+		case ch == ';':
+			flush()
+		default:
+			b.WriteByte(ch)
+		}
+	}
+	flush()
+	return out
 }
 
 // DropTableSQL returns statements removing a table registration.

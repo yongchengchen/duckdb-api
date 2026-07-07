@@ -47,7 +47,7 @@
   .checkline input { width: auto; }
   fieldset { border: 1px dashed var(--border); border-radius: 10px; margin: 0 0 12px; padding: 12px; }
   legend { font-size: 12px; color: var(--muted); padding: 0 6px; }
-  pre.sqlbox { background: #0b0f13; border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-family: var(--mono); font-size: 12px; color: #a8d08d; overflow-x: auto; white-space: pre-wrap; min-height: 60px; }
+  .sqlbox { display: block; width: 100%; background: #0b0f13; border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-family: var(--mono); font-size: 12px; color: #a8d08d; overflow-x: auto; white-space: pre-wrap; min-height: 60px; resize: vertical; line-height: 1.6; }
   textarea.sql { font-family: var(--mono); font-size: 13px; min-height: 130px; resize: vertical; }
   .meta { color: var(--muted); font-size: 12px; margin: 10px 0; }
   .error { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.4); color: var(--red); border-radius: 10px; padding: 10px 14px; margin: 10px 0; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; }
@@ -146,8 +146,13 @@
         </div>
       </fieldset>
       <div class="field" style="margin-bottom:12px">
-        <label>等效 DuckDB SQL</label>
-        <pre class="sqlbox" id="sqlPreview">-- 填写上方字段后自动生成</pre>
+        <label style="display:flex; align-items:center; gap:10px">
+          等效 DuckDB SQL
+          <span class="tag hidden" id="sqlDirtyTag">已手动编辑,保存时将按此 SQL 执行</span>
+          <button type="button" class="small hidden" id="btnRegenSQL">↺ 重新生成</button>
+        </label>
+        <textarea id="sqlPreview" class="sqlbox" spellcheck="false" rows="8">-- 填写上方字段后自动生成</textarea>
+        <div class="hint">可直接编辑此 SQL,「保存并验证」会按编辑后的语句执行并校验(密钥可保留 <code>'********'</code> 占位,执行时自动替换为已保存的密钥)</div>
       </div>
       <div style="display:flex; gap:10px">
         <button class="primary" id="btnSave">保存并验证</button>
@@ -251,6 +256,14 @@ async function loadTables() {
 }
 
 /* ---------- add / edit form ---------- */
+let sqlDirty = false;
+
+function setSqlDirty(v) {
+  sqlDirty = v;
+  $('#sqlDirtyTag').classList.toggle('hidden', !v);
+  $('#btnRegenSQL').classList.toggle('hidden', !v);
+}
+
 function formPayload() {
   const path = $('#fPath').value.trim();
   const payload = {
@@ -258,6 +271,8 @@ function formPayload() {
     format: $('#fFormat').value,
     path,
     hive_partitioning: $('#fHive').checked,
+    // 手动编辑过 → 按编辑后的 SQL 执行;否则明确置空(结构化模式)
+    custom_sql: sqlDirty ? $('#sqlPreview').value : '',
   };
   if (path.toLowerCase().startsWith('s3://')) {
     payload.s3 = {
@@ -275,7 +290,8 @@ function openForm(title) {
   $('#formTitle').textContent = title;
   $('#formCard').classList.remove('hidden');
   $('#formMsg').textContent = '';
-  $('#sqlPreview').textContent = '-- 填写上方字段后自动生成';
+  setSqlDirty(false);
+  $('#sqlPreview').value = '-- 填写上方字段后自动生成';
   $('#formCard').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -305,7 +321,12 @@ async function openEdit(name) {
     $('#fEndpoint').value = t.s3?.endpoint || '';
     $('#fUrlStyle').value = t.s3?.url_style || '';
     openForm('编辑表:' + name);
-    refreshSQLPreview();
+    if (t.custom_sql) {
+      $('#sqlPreview').value = t.custom_sql;
+      setSqlDirty(true);
+    } else {
+      refreshSQLPreview();
+    }
   } catch (e) { toast(e.message, true); }
 }
 
@@ -330,22 +351,28 @@ $('#btnSave').onclick = async () => {
 /* live SQL preview */
 let previewTimer;
 function refreshSQLPreview() {
+  if (sqlDirty) return; // 手动编辑后不再自动覆盖
   clearTimeout(previewTimer);
   previewTimer = setTimeout(async () => {
+    if (sqlDirty) return;
     const p = formPayload();
-    if (!p.name || !p.path) { $('#sqlPreview').textContent = '-- 填写表名和路径后自动生成'; return; }
+    p.custom_sql = '';
+    if (!p.name || !p.path) { $('#sqlPreview').value = '-- 填写表名和路径后自动生成'; return; }
     if (p.s3) { p.s3.secret_access_key = p.s3.secret_access_key || '********'; p.s3.access_key_id = p.s3.access_key_id || '<ACCESS_KEY_ID>'; p.s3.region = p.s3.region || '<REGION>'; }
     try {
       const data = await api('/tables/preview-sql', { method: 'POST', body: JSON.stringify(p) });
-      $('#sqlPreview').textContent = 'INSTALL httpfs;\nLOAD httpfs;\n\n' + data.statements.join(';\n\n') + ';';
+      if (sqlDirty) return;
+      $('#sqlPreview').value = 'INSTALL httpfs;\nLOAD httpfs;\n\n' + data.statements.join(';\n\n') + ';';
     } catch (e) {
-      $('#sqlPreview').textContent = '-- ' + e.message;
+      if (!sqlDirty) $('#sqlPreview').value = '-- ' + e.message;
     }
   }, 350);
 }
 ['fName','fFormat','fPath','fHive','fRegion','fKeyId','fSecret','fEndpoint','fUrlStyle'].forEach(id => {
   $('#' + id).addEventListener('input', refreshSQLPreview);
 });
+$('#sqlPreview').addEventListener('input', () => setSqlDirty(true));
+$('#btnRegenSQL').onclick = () => { setSqlDirty(false); refreshSQLPreview(); };
 
 /* upload a data file into /local */
 $('#btnUpload').onclick = () => $('#fUpload').click();

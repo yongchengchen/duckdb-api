@@ -312,6 +312,14 @@ func (s *Service) ExportMetabase(ctx context.Context) error {
 	if err := os.Rename(tmp, target); err != nil {
 		return err
 	}
+	// BI containers (e.g. Superset) run as non-root and open the catalog and
+	// secrets read-only — make sure they can.
+	_ = os.Chmod(target, 0o644)
+	if entries, err := os.ReadDir(s.secretDir()); err == nil {
+		for _, e := range entries {
+			_ = os.Chmod(filepath.Join(s.secretDir(), e.Name()), 0o644)
+		}
+	}
 
 	// Plan B for Metabase: an init script creating session secrets, for driver
 	// versions where sharing the persistent secret directory is not possible.

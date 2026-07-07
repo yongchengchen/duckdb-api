@@ -2,21 +2,42 @@
 
 基于 [GoFrame v2](https://github.com/gogf/gf) + [go-duckdb](https://github.com/marcboeker/go-duckdb) 的 DuckDB 查询服务:
 
+- linux build
+```shell
+sudo yum install -y gcc11 gcc11-c++ || sudo yum install -y gcc10 gcc10-c++
+# export CC=gcc10-cc
+# export CXX=gcc10-c++
+export CC=gcc11
+export CXX=g++11
+export CGO_ENABLED=1
+go clean -cache
+go build -o duckdb-api
+```
+
+- linux docker build
+```shell
+docker run --rm -v "$PWD":/src -w /src golang:1.24-bullseye \
+  bash -lc 'CGO_ENABLED=1 go build -o duckdb-api'
+```
+
 - **Web UI**:填表单即可把 S3 上的 parquet/csv/json 注册成 DuckDB 表(等效 `INSTALL httpfs` + `CREATE SECRET` + `CREATE VIEW ... read_parquet('s3://...')`),内置 SQL 控制台
 - **HTTP API**:给 Laravel(或任何后端)提供参数化 SQL 查询接口,默认只读
-- **Metabase**:自动导出 `metabase.duckdb` 目录文件 + S3 secrets,Metabase 直接连上做 BI
+- **Metabase + Superset**:自动导出 `metabase.duckdb` 目录文件 + S3 secrets,两个 BI 工具直接连上用
 - **一条命令启动整个 stack**:`docker compose up -d --build`
 
 ```
 ┌──────────┐   HTTP/JSON   ┌─────────────────┐   httpfs    ┌────────────┐
 │ Laravel  │ ────────────▶ │  duckdb-api :8080│ ──────────▶ │ S3 parquet │
 └──────────┘               │  (GoFrame+DuckDB)│             └────────────┘
-┌──────────┐               │  UI / REST       │                   ▲
-│ 浏览器 UI │ ────────────▶ └───────┬─────────┘                   │
+┌──────────┐               │  UI / REST       │  /local           ▲
+│ 浏览器 UI │ ────────────▶ └───────┬─────────┘ 本地文件           │
 └──────────┘                       │ 导出 /data/metabase.duckdb    │
 ┌──────────┐   JDBC(DuckDB driver) ▼        + /data/secrets       │
-│ Metabase │ ──────────────────────────────────────────────────────┘
-│  :3000   │
+│ Metabase │ ──────────────────────┤                              │
+│  :3000   │                       │                              │
+├──────────┤  SQLAlchemy           │                              │
+│ Superset │  (duckdb-engine)      │                              │
+│  :8088   │ ──────────────────────┴──────────────────────────────┘
 └──────────┘
 ```
 
@@ -29,6 +50,7 @@ docker compose up -d --build
 
 - UI:<http://localhost:8080>(右上角填入 `.env` 里的 `API_KEY`)
 - Metabase:<http://localhost:3000>(首次进入按向导初始化)
+- Superset:<http://localhost:8088>(管理员账号密码在 `.env` 里,连接已自动注册好)
 - 健康检查:`curl http://localhost:8080/healthz`
 
 ### 在 UI 里添加 orders 表
@@ -64,16 +86,18 @@ CREATE OR REPLACE VIEW "orders" AS SELECT * FROM
 
 保存时服务会真正连 S3 验证一次(读取 parquet 元数据),失败会把 DuckDB 的报错原样返回。每个表使用独立的、按 bucket 限定 SCOPE 的 secret,所以不同表可以用不同账号/不同云(AWS / Cloudflare R2 / MinIO,填 Endpoint 即可)。
 
+**等效 SQL 可以直接编辑**:改动后表单会标记「已手动编辑」,「保存并验证」将按你编辑的语句执行(执行后仍会 `DESCRIBE` 校验、失败自动回滚)。编辑后的 SQL 会作为该表的 `custom_sql` 保存,重启重建、Metabase/Superset 导出都用它(导出时 `CREATE SECRET` 自动升级为 `PERSISTENT`)。密钥可以保留 `'********'` 占位符,执行时自动替换为已保存的密钥,SQL 文本里不会存明文。点「↺ 重新生成」可回到按表单字段自动生成的模式。也可以完全用 SQL 定义一张表:只填表名 + 编辑 SQL(例如聚合视图、JOIN 多个数据源)。
+
 ### 本地文件表(Docker volume 挂载 / UI 上传)
 
 除了 S3/https,也支持查询容器本地的文件,两种放文件的方式:
 
 - **UI 上传**:添加表表单里点「📤 上传文件」,parquet/csv/json 会直接传到容器内 `/local/`,路径自动填好——Docker 跑在远程服务器上时也能用,不需要登录服务器
-- **volume 挂载**:把文件放进 Docker 宿主机的 `./localdata/`(目录可在 `.env` 里用 `LOCAL_DATA_DIR` 改,compose 会把它挂载为**两个容器**内的 `/local`)
+- **volume 挂载**:把文件放进 Docker 宿主机的 `./localdata/`(目录可在 `.env` 里用 `LOCAL_DATA_DIR` 改,compose 会把它挂载为 duckdb-api / metabase / superset **三个容器**内的 `/local`)
 
 然后添加表时路径填 `/local/sales.parquet` 或 `/local/orders/year=*/month=*/*.parquet`(不需要 S3 凭证),等效 SQL 就是 `CREATE VIEW ... AS SELECT * FROM read_parquet('/local/...')`。
 
-要挂载更多目录(比如 NAS),在 `docker-compose.yml` 的 `duckdb-api` 和 `metabase` 两个服务里**加同样的挂载行**(容器内路径必须一致,因为导出给 Metabase 的视图引用的是绝对路径),metabase 一侧建议 `:ro`。
+要挂载更多目录(比如 NAS),在 `docker-compose.yml` 的 `duckdb-api`、`metabase`、`superset` 服务里**加同样的挂载行**(容器内路径必须一致,因为导出的视图引用的是绝对路径),BI 一侧建议 `:ro`。
 
 > ⚠️ **远程 docker context**:如果 `docker context ls` 显示当前 context 指向远程主机(ssh://…),那么 `localhost:8080`、`./localdata` 等都在**远程那台机器**上——绑定挂载读的是远程文件系统,需要把 8080/3000 端口开放或做 SSH 端口转发后访问。这种场景下推荐直接用 UI 上传。
 
@@ -88,7 +112,7 @@ CREATE OR REPLACE VIEW "orders" AS SELECT * FROM
 | GET | `/api/tables` | 表列表(凭证脱敏) |
 | POST | `/api/tables` | 注册表(body 即 UI 表单的 JSON,见下) |
 | GET | `/api/tables/{name}` | 单个表定义 |
-| PUT | `/api/tables/{name}` | 更新表(凭证留空/`********` 表示沿用旧值) |
+| PUT | `/api/tables/{name}` | 更新表(凭证留空/`********` 表示沿用旧值;`custom_sql` 非空则按该 SQL 执行,置空回到自动生成) |
 | DELETE | `/api/tables/{name}` | 删除注册(不动 S3 数据) |
 | GET | `/api/tables/{name}/schema` | `DESCRIBE` 结果 |
 | GET | `/api/tables/{name}/preview?limit=50` | 采样数据 |
@@ -170,6 +194,18 @@ Metabase 首次查询 s3 表时,其内置 DuckDB 会自动下载 httpfs 扩展(�
 
 驱动版本在 [metabase/Dockerfile](metabase/Dockerfile) 里通过 `DUCKDB_DRIVER_VERSION` 控制,升级前看一眼[驱动 releases](https://github.com/motherduckdb/metabase_duckdb_driver/releases) 中标注的 Metabase 兼容版本。
 
+## Superset 接入
+
+开箱即用:`superset-init` 一次性容器会自动完成元数据库迁移、创建管理员(账号密码见 `.env` 的 `SUPERSET_ADMIN_*`)并注册好名为 **DuckDB Lakehouse** 的数据库连接(URI `duckdb:////data/metabase.duckdb`)。
+
+打开 <http://localhost:8088> 登录后直接在 **SQL Lab** 里选 "DuckDB Lakehouse" 查询,或基于表建 Dataset / Chart / Dashboard。
+
+- 镜像在 [superset/Dockerfile](superset/Dockerfile) 基础上加装了 [duckdb-engine](https://github.com/Mause/duckdb_engine)(SQLAlchemy 驱动)
+- S3 secrets 通过 volume 挂载到 Superset 用户的 `~/.duckdb/stored_secrets` 自动发现;`/local` 本地文件与其他容器同路径挂载
+- 增删改表后,新视图在**新连接**上生效;SQL Lab 每次查询新开连接,一般无感。若 Dataset 列表没更新,在数据库连接页点一下 Sync/刷新即可
+- 手动加连接的话:Data → Database Connections → DuckDB,SQLAlchemy URI 填 `duckdb:////data/metabase.duckdb`;只读可在 Advanced → Engine Parameters 填 `{"connect_args":{"read_only":true}}`
+- **务必**在 `.env` 里改 `SUPERSET_SECRET_KEY`(`openssl rand -base64 42`)和 `SUPERSET_ADMIN_PASSWORD`
+
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
@@ -182,6 +218,9 @@ Metabase 首次查询 s3 表时,其内置 DuckDB 会自动下载 httpfs 扩展(�
 | `ALLOW_WRITE` | `false` | 允许写语句 |
 | `LOCAL_DATA_DIR` | `./localdata` | (compose 变量)Docker 宿主机本地文件目录,挂载为容器内 `/local` |
 | `LOCAL_DIR` | `/local`(容器)/ `./localdata` | 本地文件表目录,也是 `/api/upload` 的保存位置 |
+| `SUPERSET_SECRET_KEY` | (占位值) | Superset 会话加密密钥,**必须修改** |
+| `SUPERSET_ADMIN_USERNAME/PASSWORD/EMAIL` | `admin`/`admin123`/… | Superset 管理员,首次初始化时创建 |
+| `SUPERSET_PORT` | `8088` | Superset 端口映射 |
 
 ## 本地开发(不用 Docker)
 

@@ -261,6 +261,9 @@ func (h *handler) previewSQL(r *ghttp.Request) {
 	if err := parseJSON(r, &t); err != nil {
 		fail(r, 400, "invalid request body: %v", err)
 	}
+	// Always generate from the structured fields — this endpoint powers the
+	// auto-preview and the "regenerate" action in the UI.
+	t.CustomSQL = ""
 	if err := duck.ValidateTable(&t); err != nil {
 		fail(r, 400, "%v", err)
 	}
