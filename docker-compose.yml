@@ -8,7 +8,21 @@ services:
     image: alpine:3
     restart: "no"
     user: "0:0"
-    command: chown -R ${USER_UID:-1000}:${GROUP_GID:-1000} /vol/data /vol/secrets /vol/metabase-data /vol/metabase-home /vol/local
+    # Best-effort, per-directory: a failure (e.g. a network-filesystem bind
+    # that rejects chown) is logged but never blocks startup — duckdb-api has
+    # its own startup permission check with an actionable error message.
+    command:
+      - sh
+      - -c
+      - |
+        for d in /vol/data /vol/secrets /vol/metabase-data /vol/metabase-home /vol/local; do
+          if chown -R ${USER_UID:-1000}:${GROUP_GID:-1000} "$$d"; then
+            echo "ok: $$d"
+          else
+            echo "WARN: chown $$d failed — fix manually if the related service reports permission errors"
+          fi
+        done
+        exit 0
     volumes:
       - duckdb_data:/vol/data
       - duckdb_secrets:/vol/secrets

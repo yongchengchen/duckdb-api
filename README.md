@@ -254,21 +254,9 @@ USER_UID=1000      # 建议与 Docker 宿主机用户一致,方便读写 ./local
 GROUP_GID=1000
 ```
 
-镜像内不创建账号,直接以数字 `USER uid:gid` 运行,所以任意 uid 都可用。修改后需要 `docker compose build`。
+镜像内以该 uid/gid 建立账号(若基础镜像已占用该 uid,则把已有账号改名),修改后需要 `docker compose build`。
 
-**已有部署升级 / 修改 uid**:旧 volume 里的文件属主是原来的用户(旧版镜像是 root),需要一次性 chown:
-
-```bash
-docker compose stop
-for v in duckdb_data duckdb_secrets metabase_data metabase_duckdb_home; do
-  docker run --rm -v duckdb-stack_${v}:/d alpine chown -R 1000:1000 /d   # 换成你的 USER_UID:GROUP_GID
-done
-# bind mount 的本地文件目录(在 Docker 宿主机上执行,或用容器代劳):
-docker run --rm -v "$(pwd)/localdata":/d alpine chown -R 1000:1000 /d
-docker compose build && docker compose up -d
-```
-
-**全新安装**:named volume 会自动继承镜像内预设的属主,无需处理;只有 `./localdata` 这类 bind mount 如果是 Docker 以 root 自动创建的,才需要按上面 chown 一下(先 `mkdir localdata` 再 up 即可避免)。
+**volume 属主自动修复**:compose 里有一个一次性的 `volume-init` 服务,每次 `docker compose up` 会先以 root 跑一个瞬时 alpine 容器,把所有 volume(含 `./localdata` bind mount)chown 成 `.env` 里的 uid/gid,然后业务容器才启动——所以旧部署升级、修改 uid、换机器都**不需要手动迁移**。万一你绕过 compose 单独跑容器遇到 `data dir not writable`,按报错里给出的 chown 命令处理一次即可。
 
 ## 安全注意
 
