@@ -18,11 +18,19 @@ ARG GROUP_GID=1000
 ARG USER_NAME=app
 ARG GROUP_NAME=app
 
-# Create a new group with a specific GID
-RUN groupadd -g $GROUP_GID $GROUP_NAME
-
-# Create a new user with a specific UID and assign them to the new group
-RUN useradd -m -u $USER_UID -g $GROUP_GID -s /bin/bash $USER_NAME
+# Create the group/user with the requested GID/UID. If the id is already
+# taken in the base image, rename that account instead — groupadd/useradd
+# would fail with exit code 4/9.
+RUN set -e; \
+    existing_group="$(getent group ${GROUP_GID} | cut -d: -f1)"; \
+    if [ -z "$existing_group" ]; then groupadd -g ${GROUP_GID} ${GROUP_NAME}; \
+    elif [ "$existing_group" != "${GROUP_NAME}" ]; then groupmod -n ${GROUP_NAME} "$existing_group"; fi; \
+    existing_user="$(getent passwd ${USER_UID} | cut -d: -f1)"; \
+    if [ -z "$existing_user" ]; then useradd -m -u ${USER_UID} -g ${GROUP_GID} -s /bin/bash ${USER_NAME}; \
+    elif [ "$existing_user" != "${USER_NAME}" ]; then \
+        usermod -l ${USER_NAME} -d /home/${USER_NAME} -m "$existing_user"; \
+        usermod -g ${GROUP_GID} ${USER_NAME}; \
+    fi
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
