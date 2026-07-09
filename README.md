@@ -184,6 +184,18 @@ $schema = DuckDb::schema('orders');
 3. **Database file** 填:`/data/metabase.duckdb`
 4. 如有 **read_only** 选项建议勾选;保存后 Sync
 
+### 新表自动出现在 Metabase(推荐配置)
+
+Metabase 的表列表来自它自己的**定时 schema 扫描**,所以默认情况下新注册的表要等扫描周期(或手动 Admin → Databases → Sync database schema / 重启)才可见。配置自动同步后,每次增删改表 duckdb-api 会立即调用 Metabase API 触发重新扫描:
+
+1. Metabase → **Admin settings → Authentication → API keys → Create API key**(组选 Administrators)
+2. 把 key 写进 `.env`:`METABASE_API_KEY=mb_xxx`,然后 `docker compose up -d duckdb-api`
+3. 之后每次保存表,API 日志会输出 `metabase refreshed to ...`,新表几秒内出现在 Metabase
+
+(`METABASE_URL` 默认 `http://metabase:3000`,`METABASE_DATABASE_ID` 默认自动发现 engine=duckdb 的库。)
+
+实现细节:光触发 sync 是不够的——Metabase 的连接池长期持有旧目录文件(rename 替换对已打开的文件句柄不可见),其 DuckDB 驱动还按文件路径缓存数据库实例。所以每次导出会额外生成一份**带版本号的目录副本**(`/data/metabase-v<时间戳>.duckdb`,自动清理只保留最近两代),并通过 Metabase API 把连接的 `database_file` 指到新副本上——全新路径必然产生全新连接,再触发 sync 即可。配置自动同步后,Metabase 连接里显示的数据库文件是版本化路径,属正常现象;未配置 API key 时仍连固定的 `/data/metabase.duckdb`(需手动 Sync/重启才能看到新表)。
+
 原理:每次在 UI 增删改表,服务都会重新导出
 
 - `/data/metabase.duckdb` —— 包含所有视图定义(原子替换,写临时文件再 rename,不影响 Metabase 已打开的连接;改表后在 Metabase 里 **Sync database schema** 一下即可)

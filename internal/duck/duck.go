@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,9 @@ type Service struct {
 	db       *sql.DB
 	bootOnce sync.Once
 	exportMu sync.Mutex
+
+	latestMu      sync.Mutex
+	latestCatalog string // newest versioned Metabase catalog copy
 }
 
 type Result struct {
@@ -258,6 +262,31 @@ func stripLeadingComments(q string) string {
 	}
 }
 
+// LatestCatalogPath returns the newest versioned Metabase catalog copy, or ""
+// if none has been exported yet.
+func (s *Service) LatestCatalogPath() string {
+	s.latestMu.Lock()
+	defer s.latestMu.Unlock()
+	return s.latestCatalog
+}
+
+// pruneCatalogVersions deletes old metabase-v*.duckdb copies, keeping the
+// current one and the single previous one.
+func (s *Service) pruneCatalogVersions(current string) {
+	matches, err := filepath.Glob(filepath.Join(s.cfg.DataDir, "metabase-v*.duckdb"))
+	if err != nil {
+		return
+	}
+	sort.Strings(matches) // millisecond-timestamp names sort chronologically
+	keepFrom := len(matches) - 2
+	for i, p := range matches {
+		if i >= keepFrom || p == current {
+			continue
+		}
+		_ = os.Remove(p)
+	}
+}
+
 // ExportMetabase rebuilds <data>/metabase.duckdb (views), <data>/secrets
 // (persistent S3 secrets) and <data>/metabase-init.sql so that Metabase can
 // query the same tables. The file is written to a temp path and renamed, so a
@@ -315,6 +344,23 @@ func (s *Service) ExportMetabase(ctx context.Context) error {
 	// BI containers (e.g. Superset) run as non-root and open the catalog and
 	// secrets read-only — make sure they can.
 	_ = os.Chmod(target, 0o644)
+	// Also write a uniquely-named copy for the Metabase auto-refresh: its
+	// DuckDB driver caches database instances per file path, so only a
+	// never-seen-before path guarantees Metabase re-reads the catalog. Old
+	// versions are pruned, keeping the current and previous one (Metabase may
+	// still hold the previous open).
+	if data, err := os.ReadFile(target); err == nil {
+		versioned := filepath.Join(s.cfg.DataDir, fmt.Sprintf("metabase-v%d.duckdb", time.Now().UnixMilli()))
+		vTmp := versioned + ".tmp"
+		if err := os.WriteFile(vTmp, data, 0o644); err == nil {
+			if err := os.Rename(vTmp, versioned); err == nil {
+				s.latestMu.Lock()
+				s.latestCatalog = versioned
+				s.latestMu.Unlock()
+				s.pruneCatalogVersions(versioned)
+			}
+		}
+	}
 	if entries, err := os.ReadDir(s.secretDir()); err == nil {
 		for _, e := range entries {
 			_ = os.Chmod(filepath.Join(s.secretDir(), e.Name()), 0o644)

@@ -13,6 +13,7 @@ import (
 
 	"duckdb-api/internal/api"
 	"duckdb-api/internal/duck"
+	"duckdb-api/internal/metabase"
 	"duckdb-api/internal/store"
 )
 
@@ -57,11 +58,16 @@ func main() {
 		g.Log().Fatalf(ctx, "create local dir %s: %v", localDir, err)
 	}
 
+	mb := metabase.New(envStr("METABASE_URL", ""), envStr("METABASE_API_KEY", ""), envInt("METABASE_DATABASE_ID", 0))
+	if mb == nil {
+		g.Log().Info(ctx, "metabase auto-sync disabled (set METABASE_URL and METABASE_API_KEY to enable)")
+	}
+
 	s := g.Server()
 	s.SetPort(envInt("PORT", 8080))
 	// Allow large data file uploads to /api/upload.
 	s.SetClientMaxBodySize(2 << 30)
-	api.Register(s, svc, st, indexHTML, apiKey, localDir)
+	api.Register(s, svc, st, indexHTML, apiKey, localDir, mb)
 	g.Log().Infof(ctx, "duckdb-api starting, data dir: %s", dataDir)
 	s.Run()
 }

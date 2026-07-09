@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 
 	"duckdb-api/internal/duck"
+	"duckdb-api/internal/metabase"
 	"duckdb-api/internal/model"
 	"duckdb-api/internal/store"
 )
@@ -26,11 +28,12 @@ type handler struct {
 	apiKey   string
 	index    []byte
 	localDir string
+	mb       *metabase.Client // nil when not configured
 }
 
 // Register wires all routes onto the GoFrame server.
-func Register(s *ghttp.Server, svc *duck.Service, st *store.Store, index []byte, apiKey, localDir string) {
-	h := &handler{svc: svc, st: st, apiKey: apiKey, index: index, localDir: localDir}
+func Register(s *ghttp.Server, svc *duck.Service, st *store.Store, index []byte, apiKey, localDir string, mb *metabase.Client) {
+	h := &handler{svc: svc, st: st, apiKey: apiKey, index: index, localDir: localDir, mb: mb}
 
 	s.BindHookHandler("/*any", ghttp.HookBeforeServe, func(r *ghttp.Request) {
 		opts := r.Response.DefaultCORSOptions()
@@ -206,10 +209,31 @@ func (h *handler) applyAndSave(r *ghttp.Request, t model.Table, old *model.Table
 	if err := h.st.Upsert(t); err != nil {
 		fail(r, 500, "persist table: %v", err)
 	}
+	h.exportAndNotify(ctx)
+	ok(r, g.Map{"table": t.Masked(), "schema": schema})
+}
+
+// exportAndNotify re-exports the BI catalog and, when configured, asks
+// Metabase to re-scan it right away — otherwise new tables only show up in
+// Metabase after its periodic scan (or a restart).
+func (h *handler) exportAndNotify(ctx context.Context) {
 	if err := h.svc.ExportMetabase(ctx); err != nil {
 		g.Log().Warningf(ctx, "export metabase catalog: %v", err)
+		return
 	}
-	ok(r, g.Map{"table": t.Masked(), "schema": schema})
+	if h.mb == nil {
+		return
+	}
+	go func() {
+		syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 60*time.Second)
+		defer cancel()
+		catalog := h.svc.LatestCatalogPath()
+		if err := h.mb.Refresh(syncCtx, catalog); err != nil {
+			g.Log().Warningf(syncCtx, "metabase refresh: %v", err)
+		} else {
+			g.Log().Infof(syncCtx, "metabase refreshed to %s, schema sync triggered", catalog)
+		}
+	}()
 }
 
 func (h *handler) deleteTable(r *ghttp.Request) {
@@ -224,9 +248,7 @@ func (h *handler) deleteTable(r *ghttp.Request) {
 	if err := h.svc.RemoveTable(ctx, name); err != nil {
 		g.Log().Warningf(ctx, "drop table %q: %v", name, err)
 	}
-	if err := h.svc.ExportMetabase(ctx); err != nil {
-		g.Log().Warningf(ctx, "export metabase catalog: %v", err)
-	}
+	h.exportAndNotify(ctx)
 	ok(r, g.Map{"deleted": name})
 }
 

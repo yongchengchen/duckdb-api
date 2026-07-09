@@ -14,6 +14,11 @@ services:
       QUERY_TIMEOUT: ${QUERY_TIMEOUT:-300}
       ALLOW_WRITE: ${ALLOW_WRITE:-false}
       LOCAL_DIR: /local
+      # When set, every table change triggers a Metabase schema sync so new
+      # tables show up immediately (create the key in Metabase: Admin
+      # settings → Authentication → API keys).
+      METABASE_URL: ${METABASE_URL:-http://metabase:3000}
+      METABASE_API_KEY: ${METABASE_API_KEY:-}
     volumes:
       - duckdb_data:/data
       # Secrets get their own volume so Metabase can mount the same directory
