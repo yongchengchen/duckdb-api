@@ -27,6 +27,7 @@ func main() {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		g.Log().Fatalf(ctx, "create data dir %s: %v", dataDir, err)
 	}
+	mustBeWritable(ctx, dataDir)
 
 	st, err := store.New(filepath.Join(dataDir, "tables.json"))
 	if err != nil {
@@ -57,6 +58,10 @@ func main() {
 	if err := os.MkdirAll(localDir, 0o755); err != nil {
 		g.Log().Fatalf(ctx, "create local dir %s: %v", localDir, err)
 	}
+	if err := writableProbe(localDir); err != nil {
+		g.Log().Warningf(ctx, "local dir %s is not writable by uid %d — uploads and local tables will fail until you chown it (e.g. chown -R %d:%d %s): %v",
+			localDir, os.Getuid(), os.Getuid(), os.Getgid(), localDir, err)
+	}
 
 	mb := metabase.New(envStr("METABASE_URL", ""), envStr("METABASE_API_KEY", ""), envInt("METABASE_DATABASE_ID", 0))
 	if mb == nil {
@@ -70,6 +75,30 @@ func main() {
 	api.Register(s, svc, st, indexHTML, apiKey, localDir, mb)
 	g.Log().Infof(ctx, "duckdb-api starting, data dir: %s", dataDir)
 	s.Run()
+}
+
+func writableProbe(dir string) error {
+	probe := filepath.Join(dir, ".rw-probe")
+	if err := os.WriteFile(probe, nil, 0o600); err != nil {
+		return err
+	}
+	return os.Remove(probe)
+}
+
+// mustBeWritable fails fast with an actionable message when the data dir is
+// still owned by another uid (e.g. a volume created by an older root-based
+// image, or a root-owned bind mount).
+func mustBeWritable(ctx context.Context, dir string) {
+	if err := writableProbe(dir); err == nil {
+		return
+	}
+	g.Log().Fatalf(ctx,
+		"data dir %s is not writable by uid %d (this container runs as a non-root user).\n"+
+			"Fix ownership once, then restart:\n"+
+			"  named volume:  docker run --rm -v <volume>:/d alpine chown -R %d:%d /d\n"+
+			"  bind mount:    chown -R %d:%d <host dir>\n"+
+			"See README 「非 root 运行」.",
+		dir, os.Getuid(), os.Getuid(), os.Getgid(), os.Getuid(), os.Getgid())
 }
 
 func envStr(key, def string) string {

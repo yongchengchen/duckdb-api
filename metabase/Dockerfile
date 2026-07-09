@@ -18,6 +18,13 @@ ARG USER_UID=1000
 ARG GROUP_GID=1000
 ARG USER_NAME=app
 ARG GROUP_NAME=app
+
+# Create a new group with a specific GID
+RUN groupadd -g $GROUP_GID $GROUP_NAME
+
+# Create a new user with a specific UID and assign them to the new group
+RUN useradd -m -u $USER_UID -g $GROUP_GID -s /bin/bash $USER_NAME
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
