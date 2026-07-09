@@ -1,6 +1,21 @@
 name: duckdb-stack
 
 services:
+  # One-shot root helper: fixes volume ownership on every `up`, so the
+  # non-root services never hit "permission denied" — regardless of whether
+  # the volumes were created by an older root-based image or by Docker itself.
+  volume-init:
+    image: alpine:3
+    restart: "no"
+    user: "0:0"
+    command: chown -R ${USER_UID:-1000}:${GROUP_GID:-1000} /vol/data /vol/secrets /vol/metabase-data /vol/metabase-home /vol/local
+    volumes:
+      - duckdb_data:/vol/data
+      - duckdb_secrets:/vol/secrets
+      - metabase_data:/vol/metabase-data
+      - metabase_duckdb_home:/vol/metabase-home
+      - ${LOCAL_DATA_DIR:-./localdata}:/vol/local
+
   duckdb-api:
     build:
       context: .
@@ -35,6 +50,9 @@ services:
       # container path in the metabase service, because exported views
       # reference these absolute paths.
       - ${LOCAL_DATA_DIR:-./localdata}:/local
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
       interval: 15s
