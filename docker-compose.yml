@@ -2,7 +2,13 @@ name: duckdb-stack
 
 services:
   duckdb-api:
-    build: .
+    build:
+      context: .
+      args: &user-args
+        USER_UID: ${USER_UID:-1000}
+        GROUP_GID: ${GROUP_GID:-1000}
+        USER_NAME: ${USER_NAME:-app}
+        GROUP_NAME: ${GROUP_NAME:-app}
     image: duckdb-api:latest
     restart: unless-stopped
     ports:
@@ -36,7 +42,9 @@ services:
       retries: 10
 
   metabase:
-    build: ./metabase
+    build:
+      context: ./metabase
+      args: *user-args
     image: metabase-duckdb:latest
     restart: unless-stopped
     ports:
@@ -52,10 +60,10 @@ services:
       # Metabase's own application database (dashboards, users, ...).
       - metabase_data:/metabase-data
       # Cache for DuckDB extensions downloaded by the Metabase driver.
-      - metabase_duckdb_home:/root/.duckdb
+      - metabase_duckdb_home:/home/${USER_NAME:-app}/.duckdb
       # Persistent S3 secrets exported by the API, mounted where the Metabase
       # DuckDB driver looks for them by default (~/.duckdb/stored_secrets).
-      - duckdb_secrets:/root/.duckdb/stored_secrets
+      - duckdb_secrets:/home/${USER_NAME:-app}/.duckdb/stored_secrets
       # Same local files, same path, read-only (see duckdb-api service).
       - ${LOCAL_DATA_DIR:-./localdata}:/local:ro
     depends_on:

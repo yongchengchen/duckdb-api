@@ -243,6 +243,33 @@ go build -o duckdb-api . && API_KEY=dev DATA_DIR=./data ./duckdb-api
 
 需要 CGO(go-duckdb 自带预编译静态库,macOS/Linux 直接可用)。
 
+## 非 root 运行
+
+duckdb-api 和 Metabase 镜像以 `.env` 里指定的非 root 用户运行(Superset 官方镜像本身就是非 root):
+
+```dotenv
+USER_NAME=app      # 只影响容器内 home 目录路径 /home/<name>
+GROUP_NAME=app
+USER_UID=1000      # 建议与 Docker 宿主机用户一致,方便读写 ./localdata 等 bind mount
+GROUP_GID=1000
+```
+
+镜像内不创建账号,直接以数字 `USER uid:gid` 运行,所以任意 uid 都可用。修改后需要 `docker compose build`。
+
+**已有部署升级 / 修改 uid**:旧 volume 里的文件属主是原来的用户(旧版镜像是 root),需要一次性 chown:
+
+```bash
+docker compose stop
+for v in duckdb_data duckdb_secrets metabase_data metabase_duckdb_home; do
+  docker run --rm -v duckdb-stack_${v}:/d alpine chown -R 1000:1000 /d   # 换成你的 USER_UID:GROUP_GID
+done
+# bind mount 的本地文件目录(在 Docker 宿主机上执行,或用容器代劳):
+docker run --rm -v "$(pwd)/localdata":/d alpine chown -R 1000:1000 /d
+docker compose build && docker compose up -d
+```
+
+**全新安装**:named volume 会自动继承镜像内预设的属主,无需处理;只有 `./localdata` 这类 bind mount 如果是 Docker 以 root 自动创建的,才需要按上面 chown 一下(先 `mkdir localdata` 再 up 即可避免)。
+
 ## 安全注意
 
 - S3 凭证明文保存在 `duckdb_data` volume 的 `tables.json` / `secrets/` / `metabase-init.sql` 中 —— 请保护好宿主机与 volume,建议为该服务专门创建**只读、按 bucket 限权**的 IAM Key
