@@ -15,13 +15,18 @@ services:
       - sh
       - -c
       - |
-        for d in /vol/data /vol/secrets /vol/metabase-data /vol/metabase-home /vol/local; do
+        for d in /vol/data /vol/secrets /vol/metabase-data /vol/metabase-home; do
           if chown -R ${USER_UID:-1000}:${GROUP_GID:-1000} "$$d"; then
             echo "ok: $$d"
           else
             echo "WARN: chown $$d failed — fix manually if the related service reports permission errors"
           fi
         done
+        # /vol/local may contain FUSE/S3 mounts underneath — never recurse
+        # into it, only make the top-level dir writable for uploads.
+        chown ${USER_UID:-1000}:${GROUP_GID:-1000} /vol/local \
+          && echo "ok: /vol/local (non-recursive)" \
+          || echo "WARN: chown /vol/local failed"
         exit 0
     volumes:
       - duckdb_data:/vol/data
@@ -62,8 +67,15 @@ services:
       # Local file tables: drop parquet/csv/json files into this host folder
       # and register them with path /local/... . Must be mounted at the SAME
       # container path in the metabase service, because exported views
-      # reference these absolute paths.
-      - ${LOCAL_DATA_DIR:-./localdata}:/local
+      # reference these absolute paths. rslave propagation lets mounts made
+      # on the host AFTER container start (e.g. s3fs/mountpoint-s3 under this
+      # dir, or their auto-remounts) appear inside the container without a
+      # restart.
+      - type: bind
+        source: ${LOCAL_DATA_DIR:-./localdata}
+        target: /local
+        bind:
+          propagation: rslave
     depends_on:
       volume-init:
         condition: service_completed_successfully
@@ -97,7 +109,12 @@ services:
       # DuckDB driver looks for them by default (~/.duckdb/stored_secrets).
       - duckdb_secrets:/home/${USER_NAME:-app}/.duckdb/stored_secrets
       # Same local files, same path, read-only (see duckdb-api service).
-      - ${LOCAL_DATA_DIR:-./localdata}:/local:ro
+      - type: bind
+        source: ${LOCAL_DATA_DIR:-./localdata}
+        target: /local
+        read_only: true
+        bind:
+          propagation: rslave
     depends_on:
       duckdb-api:
         condition: service_healthy
@@ -122,7 +139,12 @@ services:
       # Persistent S3 secrets exported by the API (auto-discovered by DuckDB).
       - duckdb_secrets:/app/superset_home/.duckdb/stored_secrets
       # Same local files, same container path as duckdb-api and metabase.
-      - ${LOCAL_DATA_DIR:-./localdata}:/local:ro
+      - type: bind
+        source: ${LOCAL_DATA_DIR:-./localdata}
+        target: /local
+        read_only: true
+        bind:
+          propagation: rslave
     depends_on:
       superset-init:
         condition: service_completed_successfully
